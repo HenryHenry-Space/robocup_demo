@@ -218,6 +218,8 @@ cd ~/Workspace/booster/robocup_demo
 
 # If failed, please check conda env and activate trt
 # If TOS error, please allow toc acceptance
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
 # The script will first create the build environment using Conda and then start building the engine.
 # This process may take some time, so please be patient while it completes.
