@@ -104,7 +104,7 @@ void BrainTree::initEntry()
     setEntry<string>("goalie_mode", "attack"); 
 
     setEntry<int>("test_choice", 0);
-    setEntry<int>("control_state", 0);
+    setEntry<int>("control_state", 3);
     setEntry<bool>("assist_chase", false);
     setEntry<bool>("assist_kick", false);
     setEntry<bool>("go_manual", false);
