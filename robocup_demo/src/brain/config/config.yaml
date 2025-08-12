@@ -61,7 +61,7 @@ brain_node:
 
     rerunLog:
       enable_tcp: true 
-      server_ip: "192.168.54.202:9876" 
+      server_ip: "192.168.10.10:9876" 
       enable_file: false 
       log_dir: "/home/booster/Workspace/rrlog"
       max_log_file_mins: 5.0 

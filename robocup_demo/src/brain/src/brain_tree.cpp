@@ -345,7 +345,7 @@ NodeStatus Chase::tick()
             _dir = 1.0;
         else
             _dir = -1.0;
-        targetY = brain->data->robotPoseToField.y + _dir * dist;
+        targetY = brain->data->ball.posToField.y + _dir * dist;
     }
 
     // Convert to robot coordinates
@@ -1058,45 +1058,26 @@ NodeStatus Kick::onRunning()
     // Calculate real-time velocity based on current ball position
     double adjustedYaw = brain->data->ball.yawToRobot - yawOffset;
     double ballRange = brain->data->ball.range;
-    
-    // If ball is very close, reduce velocity for precision
-    double rangeFactor = ballRange > kickRange ? 1.0 : (ballRange / kickRange) * 0.5 + 0.5;
-    
+
     double tx = cos(adjustedYaw) * ballRange;
     double ty = sin(adjustedYaw) * ballRange;
 
     double vx, vy;
 
-    if (fabs(ty) < 0.01 && fabs(adjustedYaw) < 0.01)
-    {
-        vx = vxLimit * rangeFactor;
-        vy = 0.0;
-    }
-    else
-    {
-        // Calculate velocity to reach ball position
-        vy = ty > 0 ? vyLimit : -vyLimit;
-        vx = vy / ty * tx * vxFactor;
-        
-        // Apply range factor to slow down when close
-        vx *= rangeFactor;
-        vy *= rangeFactor;
-        
-        // Cap velocities
-        if (fabs(vx) > vxLimit)
-        {
-            vy *= vxLimit / fabs(vx);
-            vx = vx > 0 ? vxLimit : -vxLimit;
-        }
-        if (fabs(vy) > vyLimit)
-        {
-            vx *= vyLimit / fabs(vy);
-            vy = vy > 0 ? vyLimit : -vyLimit;
-        }
-    }
+    // Use proportional control for both x and y directions
+    double xGain = 2.0; // Proportional gain for x-direction
+    double yGain = 2.0; // Proportional gain for y-direction
+    double thetaGain = 1.0; // Proportional gain for theta-direction
+    
+    vx = tx * xGain;
+    vy = ty * yGain;
+    
+    // Cap velocities to limits
+    vx = cap(vx, vxLimit, -vxLimit);
+    vy = cap(vy, vyLimit, -vyLimit);
 
     // Add some rotational velocity to align with ball
-    double vtheta = brain->data->ball.yawToRobot * 1.5;
+    double vtheta = brain->data->ball.yawToRobot * thetaGain;
     vtheta = cap(vtheta, 1.0, -1.0); // Limit rotational velocity
 
     brain->client->setVelocity(vx, vy, vtheta, false, false, false);
