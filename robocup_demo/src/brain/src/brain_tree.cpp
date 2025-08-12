@@ -1286,7 +1286,6 @@ NodeStatus GoToReadyPosition::tick()
     bool isKickoff = brain->tree->getEntry<bool>("gc_is_kickoff_side");
     auto fd = brain->config->fieldDimensions;
 
-
     double tx = 0, ty = 0, ttheta = 0; 
     double longRangeThreshold = 1.0;
     double turnThreshold = 0.4;
@@ -1300,34 +1299,98 @@ NodeStatus GoToReadyPosition::tick()
     double vthetaLimit = 1.3;
     bool avoidObstacle = true;
 
-    if (role == "striker" && isKickoff) {
-        tx = - max(fd.circleRadius, 1.5);
-        ty = 0;
-        if (brain->config->numOfPlayers == 3 && brain->data->liveCount >= 2)
-        {
-            if (brain->isPrimaryStriker()) {
+    // Hard-coded ready positions based on player ID
+    int playerId = brain->config->playerId;
+    
+    if (role == "striker") {
+        // Striker positions based on player ID
+        switch (playerId) {
+            case 1: // Primary striker
+                tx = -fd.circleRadius - 1.0;
+                ty = 0.0;
+                ttheta = 0.0;
+                break;
+            case 2: // Secondary striker
+                tx = -fd.circleRadius - 1.0;
+                ty = 2.0;
+                ttheta = 0.0;
+                break;
+            case 3: // Third striker
+                tx = -fd.circleRadius - 1.0;
+                ty = -2.0;
+                ttheta = 0.0;
+                break;
+            case 4: // Fourth striker
+                tx = -fd.circleRadius - 2.5;
                 ty = 1.5;
-            } else {
+                ttheta = 0.0;
+                break;
+            case 5: // Fifth striker
+                tx = -fd.circleRadius - 2.5;
                 ty = -1.5;
-            }
+                ttheta = 0.0;
+                break;
+            default:
+                // Fallback to original logic for unknown player IDs
+                if (isKickoff) {
+                    tx = -max(fd.circleRadius, 1.5);
+                    ty = 0;
+                    if (brain->config->numOfPlayers == 3 && brain->data->liveCount >= 2) {
+                        if (brain->isPrimaryStriker()) {
+                            ty = 1.5;
+                        } else {
+                            ty = -1.5;
+                        }
+                    }
+                } else {
+                    tx = -fd.circleRadius * 1.0;
+                    ty = 0;
+                    if (brain->config->numOfPlayers == 3 && brain->data->liveCount >= 2) {
+                        if (brain->isPrimaryStriker()) {
+                            ty = 1.5;
+                        } else {
+                            ty = -1.5;
+                        }
+                    }
+                }
+                ttheta = 0;
+                break;
         }
-        ttheta = 0;
-    } else if (role == "striker" && !isKickoff) {
-        tx = - fd.circleRadius * 1.0;
-        ty = 0;
-        if (brain->config->numOfPlayers == 3 && brain->data->liveCount >= 2)
-        {
-            if (brain->isPrimaryStriker()) {
-                ty = 1.5;
-            } else {
-                ty = -1.5;
-            }
-        }
-        ttheta = 0;
     } else if (role == "goal_keeper") {
-        tx = -fd.length / 2.0 + fd.goalAreaLength;
-        ty = 0;
-        ttheta = 0;
+        // Goal keeper positions based on player ID
+        switch (playerId) {
+            case 1: // Primary goal keeper
+                tx = -fd.length / 2.0 + fd.goalAreaLength + 0.5;
+                ty = 0.0;
+                ttheta = 0.0;
+                break;
+            case 2: // Secondary goal keeper
+                tx = -fd.length / 2.0 + fd.goalAreaLength + 0.5;
+                ty = 1.5;
+                ttheta = 0.0;
+                break;
+            case 3: // Third goal keeper
+                tx = -fd.length / 2.0 + fd.goalAreaLength + 0.5;
+                ty = -1.5;
+                ttheta = 0.0;
+                break;
+            case 4: // Fourth goal keeper
+                tx = -fd.length / 2.0 + fd.goalAreaLength + 1.0;
+                ty = 2.0;
+                ttheta = 0.0;
+                break;
+            case 5: // Fifth goal keeper
+                tx = -fd.length / 2.0 + fd.goalAreaLength + 1.0;
+                ty = -2.0;
+                ttheta = 0.0;
+                break;
+            default:
+                // Fallback to original logic for unknown player IDs
+                tx = -fd.length / 2.0 + fd.goalAreaLength;
+                ty = 0;
+                ttheta = 0;
+                break;
+        }
     }
 
     brain->client->moveToPoseOnField2(tx, ty, ttheta, longRangeThreshold, turnThreshold, vxLimit, vyLimit, vthetaLimit, distTolerance / 1.5, distTolerance / 1.5, thetaTolerance, avoidObstacle);

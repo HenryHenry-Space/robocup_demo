@@ -400,6 +400,27 @@ private:
     Brain *brain;
 };
 
+/**
+ * @brief Moves robot to hard-coded ready position based on player ID and role
+ * 
+ * Ready positions are now hard-coded for each robot based on their player_id:
+ * 
+ * Strikers:
+ * - Player 1: Center striker (-circleRadius-1.0, 0.0)
+ * - Player 2: Right striker (-circleRadius-1.0, 2.0) 
+ * - Player 3: Left striker (-circleRadius-1.0, -2.0)
+ * - Player 4: Right back striker (-circleRadius-2.5, 1.5)
+ * - Player 5: Left back striker (-circleRadius-2.5, -1.5)
+ * 
+ * Goal Keepers:
+ * - Player 1: Center goalie (-length/2+goalAreaLength+0.5, 0.0)
+ * - Player 2: Right goalie (-length/2+goalAreaLength+0.5, 1.5)
+ * - Player 3: Left goalie (-length/2+goalAreaLength+0.5, -1.5)
+ * - Player 4: Right back goalie (-length/2+goalAreaLength+1.0, 2.0)
+ * - Player 5: Left back goalie (-length/2+goalAreaLength+1.0, -2.0)
+ * 
+ * Falls back to original dynamic logic for unknown player IDs
+ */
 class GoToReadyPosition : public SyncActionNode
 {
 public:
