@@ -303,9 +303,10 @@ public:
     static PortsList providedPorts()
     {
         return {
-            InputPort<double>("min_msec_kick", 500, "踢球动作最少执行多少毫秒"),
-            InputPort<double>("msecs_stablize", 1000, "稳定多少毫秒"),
-            InputPort<double>("speed_limit", 0.8, "速度最大值"),
+            InputPort<int>("max_msec_kick", 3000, "The maximum duration (in milliseconds) for executing a kick action"),
+            InputPort<double>("kick_range", 0.3, "Range threshold to reduce velocity for precision"),
+            InputPort<double>("vx_limit", 1.2, "vx limit"),
+            InputPort<double>("vy_limit", 0.4, "vy limit"),
         };
     }
 
@@ -319,11 +320,7 @@ public:
 private:
     Brain *brain;
     rclcpp::Time _startTime; 
-    string _state = "kick"; // stablize | kick
-    int _msecKick = 1000;    
-    double _speed; 
-    double _minRange; 
-    tuple<double, double, double> _calcSpeed();
+    double _initialBallRange = 0.0;
 };
 
 
