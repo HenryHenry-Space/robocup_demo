@@ -306,6 +306,10 @@ NodeStatus Chase::tick()
     getInput("vy_limit", vyLimit);
     getInput("vtheta_limit", vthetaLimit);
     getInput("dist", dist);
+    bool avoidObstacle;
+    brain->get_parameter("obstacle_avoidance.avoid_during_chase", avoidObstacle);
+    double oaSafeDist;
+    brain->get_parameter("obstacle_avoidance.chase_ao_safe_dist", oaSafeDist);
 
     // Goal center position (opponent's goal)
     double goalX = brain->config->fieldDimensions.length / 2 + 1.0;
@@ -396,6 +400,18 @@ NodeStatus Chase::tick()
     vx = cap(vx, vxLimit, -vxLimit);
     vy = cap(vy, vyLimit, -vyLimit);
     vtheta = cap(vtheta, vthetaLimit, -vthetaLimit);
+
+    // OBSTACLE AVOIDANCE ?
+    double targetDir = atan2(target_r.y, target_r.x);
+    double distToObstacle = brain->distToObstacle(targetDir);
+    double ballYaw = brain->data->ball.yawToRobot;
+    if (avoidObstacle && distToObstacle < oaSafeDist) {
+        auto avoidDir = brain->calcAvoidDir(targetDir, oaSafeDist);
+        const double speed = 0.5;
+        vx = speed * cos(avoidDir);
+        vy = speed * sin(avoidDir);
+        vtheta = ballYaw;
+    }
 
     brain->client->setVelocity(vx, vy, vtheta, false, false, false);
     return NodeStatus::SUCCESS;
@@ -1005,6 +1021,22 @@ NodeStatus Kick::onRunning()
     if (brain->msecsSince(_startTime) > maxMSecKick)
     {
         brain->client->setVelocity(0, 0, 0);
+        return NodeStatus::SUCCESS;
+    }
+
+    // OBSTACLE AVOIDANCE ?
+    bool avoidPushing;
+    double kickAoSafeDist;
+    brain->get_parameter("obstacle_avoidance.avoid_during_kick", avoidPushing);
+    brain->get_parameter("obstacle_avoidance.kick_ao_safe_dist", kickAoSafeDist);
+    string role = brain->tree->getEntry<string>("player_role");
+    if (
+        avoidPushing
+        && (role != "goal_keeper")
+        && brain->data->robotPoseToField.x < brain->config->fieldDimensions.length / 2 - brain->config->fieldDimensions.goalAreaLength
+        && brain->distToObstacle(brain->data->ball.yawToRobot) < kickAoSafeDist
+    ) {
+        brain->client->setVelocity(-0.1, 0, 0);
         return NodeStatus::SUCCESS;
     }
 
