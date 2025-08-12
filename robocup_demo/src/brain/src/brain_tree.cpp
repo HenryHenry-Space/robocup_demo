@@ -949,6 +949,15 @@ NodeStatus GoalieDecide::tick()
     auto color = 0xFFFFFFFF; 
     bool iKnowBallPos = brain->tree->getEntry<bool>("ball_location_known");
     bool tmBallPosReliable = brain->tree->getEntry<bool>("tm_ball_pos_reliable");
+
+    // Penalty area check
+    auto fd = brain->config->fieldDimensions;
+    auto ball = brain->data->ball.posToField;
+    bool ballInPenaltyArea = (
+        ball.x >= -fd.length/2 && ball.x <= -fd.length/2 + fd.penaltyAreaLength &&
+        ball.y >= -fd.penaltyAreaWidth/2 && ball.y <= fd.penaltyAreaWidth/2
+    );
+    
     if (!(iKnowBallPos || tmBallPosReliable))
     {
         newDecision = "find";
@@ -958,16 +967,18 @@ NodeStatus GoalieDecide::tick()
     {
         newDecision = "retreat";
         color = 0xFF00FFFF;
-    } else if (ballRange > chaseRangeThreshold * (lastDecision == "chase" ? 0.9 : 1.0))
+    } // Only allow chase if ball is in penalty area
+    else if (ballInPenaltyArea && ballRange > chaseRangeThreshold * (lastDecision == "chase" ? 0.9 : 1.0))
     {
         newDecision = "chase";
         color = 0x00FF00FF;
     }
-    else if (angleIsGood)
+    else if (ballInPenaltyArea && angleIsGood)
     {
         newDecision = "kick";
         color = 0xFF0000FF;
     }
+    // If the ball is not in the penalty area, align the robot to the ball
     else
     {
         newDecision = "adjust";
