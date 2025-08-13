@@ -22,6 +22,7 @@ class WifiConfig:
     gateway: str
     password: str = ""
     dns: str = "8.8.8.8"
+    gc_ip: str = "127.0.0.1"
 
 
 def run_command(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
@@ -220,12 +221,13 @@ def display_config(config: WifiConfig):
     print("\n" + "=" * 50)
     print("CURRENT WIFI CONFIGURATION")
     print("=" * 50)
-    print(f"SSID:           {config.ssid}")
-    print(f"Interface:      {config.interface}")
-    print(f"IP Address:     {config.ip}/{config.subnet}")
-    print(f"Gateway:        {config.gateway}")
-    print(f"DNS Server:     {config.dns}")
-    print(f"Password:       {config.password if config.password else '(none)'}")
+    print(f"SSID:                 {config.ssid}")
+    print(f"Interface:            {config.interface}")
+    print(f"IP Address:           {config.ip}/{config.subnet}")
+    print(f"Gateway:              {config.gateway}")
+    print(f"DNS Server:           {config.dns}")
+    print(f"Password:             {config.password if config.password else '(none)'}")
+    print(f"GameController IP:    {config.gc_ip}")
     print("=" * 50)
 
 
@@ -289,6 +291,12 @@ def edit_config(config: WifiConfig) -> WifiConfig:
     
     return config
 
+def set_game_controller_ip(config: WifiConfig) -> WifiConfig:
+    print(f"\nCurrent GameController IP: {config.gc_ip if config.gc_ip else '(none)'}")
+    new_gc_ip = input("New GameController IP (or Enter to keep): ").strip()   
+    if new_gc_ip:
+        config.gc_ip = new_gc_ip
+    return config
 
 def main_menu():
     """Display main menu and handle user input"""
@@ -305,7 +313,7 @@ def main_menu():
         print("7. Test connection (ping gateway)")
         print("8. Reset to DHCP")
         print("9. Configure purpose")
-        print("10. Configure player id")
+        print("10. Configure game controller IP")
         print("0. Exit")
         print("=" * 50)
         
@@ -329,8 +337,8 @@ def main_menu():
             reset_to_dhcp()
         elif choice == "9":
             configure_purpose()
-        # elif choice == "10":
-        #     configure_player_id()
+        elif choice == "10":
+            set_game_controller_ip(config)
         elif choice == "0":
             print("Goodbye!")
             sys.exit(0)
@@ -368,29 +376,6 @@ def configure_purpose():
     else:
         print("No new purpose provided")
 
-# def configure_player_id():
-#     script_path = os.path.dirname(os.path.abspath(__file__))
-#     with open(os.path.join(script_path, "../src/brain/config/config.yaml"), "r") as f:
-#         current_player_id = ""
-#         for line in f:
-#             if "player_id" in line:
-#                 # Split by apostrophe and take the second part
-#                 current_player_id = line.lstrip().split(": ")[1].split(" # ")[0]
-#                 break
-
-#     print(f"Current player id: {current_player_id}")
-#     new_player_id = input("Enter new player id (or Enter to keep): ").strip()
-#     if new_player_id:
-#         with open(os.path.join(script_path, "../src/brain/config/config.yaml"), "r") as f:
-#             lines = f.readlines()
-#         with open(os.path.join(script_path, "../src/brain/config/config.yaml"), "w") as f:
-#             for line in lines:
-#                 if "player_id" in line:
-#                     line = f'      player_id: {new_player_id} # 1 | 2 | 3 | 4 | 5\n'
-#                     print(f"New player id written: {new_player_id}")
-#                 f.write(line)
-#     else:
-#         print("No new player id provided")
 
 def scan_networks():
     """Scan and display available WiFi networks"""
@@ -436,6 +421,8 @@ def apply_configuration(config: WifiConfig):
             elif "player_id" in line:
                 line = f'      player_id: {player_id} # 1 | 2 | 3 | 4 | 5\n'
                 print(f'New player id set: {player_id}')
+            elif "game_control_ip" in line:
+                line = f'    game_control_ip: "{config.ip}"\n'
             f.write(line)
 
     print(f"\nApplying configuration for {config.ssid}...")
@@ -571,7 +558,8 @@ if __name__ == "__main__":
         subnet="16",
         gateway="192.168.9.1",
         password="12345678",
-        dns="8.8.8.8"
+        dns="8.8.8.8",
+        gc_ip="192.168.9.2"
     )
     
     # Check if running as root for operations that need it
