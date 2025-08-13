@@ -328,8 +328,8 @@ def main_menu():
             reset_to_dhcp()
         elif choice == "9":
             configure_purpose()
-        elif choice == "10":
-            configure_player_id()
+        # elif choice == "10":
+        #     configure_player_id()
         elif choice == "0":
             print("Goodbye!")
             sys.exit(0)
@@ -367,29 +367,29 @@ def configure_purpose():
     else:
         print("No new purpose provided")
 
-def configure_player_id():
-    script_path = os.path.dirname(os.path.abspath(__file__))
-    with open(os.path.join(script_path, "../src/brain/config/config.yaml"), "r") as f:
-        current_player_id = ""
-        for line in f:
-            if "player_id" in line:
-                # Split by apostrophe and take the second part
-                current_player_id = line.lstrip().split(": ")[1].split(" # ")[0]
-                break
+# def configure_player_id():
+#     script_path = os.path.dirname(os.path.abspath(__file__))
+#     with open(os.path.join(script_path, "../src/brain/config/config.yaml"), "r") as f:
+#         current_player_id = ""
+#         for line in f:
+#             if "player_id" in line:
+#                 # Split by apostrophe and take the second part
+#                 current_player_id = line.lstrip().split(": ")[1].split(" # ")[0]
+#                 break
 
-    print(f"Current player id: {current_player_id}")
-    new_player_id = input("Enter new player id (or Enter to keep): ").strip()
-    if new_player_id:
-        with open(os.path.join(script_path, "../src/brain/config/config.yaml"), "r") as f:
-            lines = f.readlines()
-        with open(os.path.join(script_path, "../src/brain/config/config.yaml"), "w") as f:
-            for line in lines:
-                if "player_id" in line:
-                    line = f'      player_id: {new_player_id} # 1 | 2 | 3 | 4 | 5\n'
-                    print(f"New player id written: {new_player_id}")
-                f.write(line)
-    else:
-        print("No new player id provided")
+#     print(f"Current player id: {current_player_id}")
+#     new_player_id = input("Enter new player id (or Enter to keep): ").strip()
+#     if new_player_id:
+#         with open(os.path.join(script_path, "../src/brain/config/config.yaml"), "r") as f:
+#             lines = f.readlines()
+#         with open(os.path.join(script_path, "../src/brain/config/config.yaml"), "w") as f:
+#             for line in lines:
+#                 if "player_id" in line:
+#                     line = f'      player_id: {new_player_id} # 1 | 2 | 3 | 4 | 5\n'
+#                     print(f"New player id written: {new_player_id}")
+#                 f.write(line)
+#     else:
+#         print("No new player id provided")
 
 def scan_networks():
     """Scan and display available WiFi networks"""
@@ -417,6 +417,25 @@ def scan_interfaces():
 
 def apply_configuration(config: WifiConfig):
     """Apply the WiFi configuration"""
+    print("Applying team and player id configurations...\n")
+    # The last 16 bits of the ip corresponds to team_id and player_id, so we edit the config here now before applying the wifi settings
+    team_id, player_id = config.ip.split(".")[2:]
+    # Write the team and player id to the brain config
+    lines = []
+    script_path = os.path.dirname(os.path.abspath(__file__))
+    with open(os.path.join(script_path, "../src/brain/config/config.yaml"), "r") as f:
+        lines = f.readlines()
+
+    with open(os.path.join(script_path, "../src/brain/config/config.yaml"), "w") as f:
+        for line in lines:
+            if "team_id" in line:
+                line = f'      team_id: {team_id} # must be consistant with GameControl\n'
+                print(f"New team id set: {team_id}")
+            elif "player_id" in line:
+                line = f'      player_id: {player_id} # 1 | 2 | 3 | 4 | 5\n'
+                print(f'New player id set: {player_id}')
+            f.write(line)
+
     print(f"\nApplying configuration for {config.ssid}...")
     
     # Check if running as root
