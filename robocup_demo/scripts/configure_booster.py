@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# WARNING: MAKE SURE THAT THE CWD IS ~/robocup_demo/scripts
 """
 Interactive WiFi IP Configuration Override Tool
 Forces static IP configuration on WiFi interfaces using NetworkManager
@@ -420,6 +421,7 @@ def apply_configuration(config: WifiConfig):
     print("Applying team and player id configurations...\n")
     # The last 16 bits of the ip corresponds to team_id and player_id, so we edit the config here now before applying the wifi settings
     team_id, player_id = config.ip.split(".")[2:]
+
     # Write the team and player id to the brain config
     lines = []
     script_path = os.path.dirname(os.path.abspath(__file__))
