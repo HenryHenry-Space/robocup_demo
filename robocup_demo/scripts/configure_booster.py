@@ -234,28 +234,28 @@ def edit_config(config: WifiConfig) -> WifiConfig:
     print("\nConfiguration Editor")
     print("Press Enter to keep current value, or type new value")
     
-    # SSID
-    print(f"\nCurrent SSID: {config.ssid}")
-    new_ssid = input("New SSID (or Enter to keep): ").strip()
-    if new_ssid:
-        config.ssid = new_ssid
+    # # SSID
+    # print(f"\nCurrent SSID: {config.ssid}")
+    # new_ssid = input("New SSID (or Enter to keep): ").strip()
+    # if new_ssid:
+    #     config.ssid = new_ssid
     
-    # Interface
-    print(f"\nCurrent Interface: {config.interface}")
-    available_interfaces = get_available_interfaces()
-    if available_interfaces:
-        print("Available interfaces:")
-        for i, iface in enumerate(available_interfaces, 1):
-            print(f"  {i}. {iface}")
-        print("  0. Custom input")
+    # # Interface
+    # print(f"\nCurrent Interface: {config.interface}")
+    # available_interfaces = get_available_interfaces()
+    # if available_interfaces:
+    #     print("Available interfaces:")
+    #     for i, iface in enumerate(available_interfaces, 1):
+    #         print(f"  {i}. {iface}")
+    #     print("  0. Custom input")
         
-        choice = input("Select interface (or Enter to keep current): ").strip()
-        if choice == "0":
-            new_interface = input("Enter interface name: ").strip()
-            if new_interface:
-                config.interface = new_interface
-        elif choice.isdigit() and 1 <= int(choice) <= len(available_interfaces):
-            config.interface = available_interfaces[int(choice) - 1]
+    #     choice = input("Select interface (or Enter to keep current): ").strip()
+    #     if choice == "0":
+    #         new_interface = input("Enter interface name: ").strip()
+    #         if new_interface:
+    #             config.interface = new_interface
+    #     elif choice.isdigit() and 1 <= int(choice) <= len(available_interfaces):
+    #         config.interface = available_interfaces[int(choice) - 1]
     
     # IP Address
     print(f"\nCurrent IP: {config.ip}")
@@ -264,10 +264,10 @@ def edit_config(config: WifiConfig) -> WifiConfig:
         config.ip = new_ip
     
     # Subnet
-    print(f"\nCurrent Subnet: /{config.subnet}")
-    new_subnet = input("New subnet mask / (or Enter to keep): ").strip()
-    if new_subnet:
-        config.subnet = new_subnet
+    # print(f"\nCurrent Subnet: /{config.subnet}")
+    # new_subnet = input("New subnet mask / (or Enter to keep): ").strip()
+    # if new_subnet:
+    #     config.subnet = new_subnet
     
     # Gateway
     print(f"\nCurrent Gateway: {config.gateway}")
@@ -565,12 +565,12 @@ def reset_to_dhcp():
 if __name__ == "__main__":
     # Default configuration
     config = WifiConfig(
-        ssid="robocup-x",
-        interface="wlp146s0",
-        ip="192.168.57.45",
-        subnet="27",
-        gateway="192.168.57.1",
-        password="9181918191",
+        ssid="5_FIELD_P",
+        interface="wlp1s0",
+        ip="192.168.57.1",
+        subnet="16",
+        gateway="192.168.9.1",
+        password="12345678",
         dns="8.8.8.8"
     )
     
