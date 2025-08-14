@@ -306,6 +306,10 @@ NodeStatus Chase::tick()
     getInput("vy_limit", vyLimit);
     getInput("vtheta_limit", vthetaLimit);
     getInput("dist", dist);
+    bool avoidObstacle;
+    brain->get_parameter("obstacle_avoidance.avoid_during_chase", avoidObstacle);
+    double oaSafeDist;
+    brain->get_parameter("obstacle_avoidance.chase_ao_safe_dist", oaSafeDist);
 
     // Goal center position (opponent's goal)
     double goalX = brain->config->fieldDimensions.length / 2 + 1.0;
@@ -341,7 +345,7 @@ NodeStatus Chase::tick()
             _dir = 1.0;
         else
             _dir = -1.0;
-        targetY = brain->data->robotPoseToField.y + _dir * dist;
+        targetY = brain->data->ball.posToField.y + _dir * dist;
     }
 
     // Convert to robot coordinates
@@ -396,6 +400,18 @@ NodeStatus Chase::tick()
     vx = cap(vx, vxLimit, -vxLimit);
     vy = cap(vy, vyLimit, -vyLimit);
     vtheta = cap(vtheta, vthetaLimit, -vthetaLimit);
+
+    // OBSTACLE AVOIDANCE ?
+    double targetDir = atan2(target_r.y, target_r.x);
+    double distToObstacle = brain->distToObstacle(targetDir);
+    double ballYaw = brain->data->ball.yawToRobot;
+    if (avoidObstacle && distToObstacle < oaSafeDist) {
+        auto avoidDir = brain->calcAvoidDir(targetDir, oaSafeDist);
+        const double speed = 0.5;
+        vx = speed * cos(avoidDir);
+        vy = speed * sin(avoidDir);
+        vtheta = ballYaw;
+    }
 
     brain->client->setVelocity(vx, vy, vtheta, false, false, false);
     return NodeStatus::SUCCESS;
@@ -1050,6 +1066,22 @@ NodeStatus Kick::onRunning()
         return NodeStatus::SUCCESS;
     }
 
+    // OBSTACLE AVOIDANCE ?
+    bool avoidPushing;
+    double kickAoSafeDist;
+    brain->get_parameter("obstacle_avoidance.avoid_during_kick", avoidPushing);
+    brain->get_parameter("obstacle_avoidance.kick_ao_safe_dist", kickAoSafeDist);
+    string role = brain->tree->getEntry<string>("player_role");
+    if (
+        avoidPushing
+        && (role != "goal_keeper")
+        && brain->data->robotPoseToField.x < brain->config->fieldDimensions.length / 2 - brain->config->fieldDimensions.goalAreaLength
+        && brain->distToObstacle(brain->data->ball.yawToRobot) < kickAoSafeDist
+    ) {
+        brain->client->setVelocity(-0.1, 0, 0);
+        return NodeStatus::SUCCESS;
+    }
+
     // Check if ball is no longer detected or moved significantly away (successful kick)
     if (!brain->data->ballDetected || brain->data->ball.range > _initialBallRange + 0.5)
     {
@@ -1068,45 +1100,26 @@ NodeStatus Kick::onRunning()
     // Calculate real-time velocity based on current ball position
     double adjustedYaw = brain->data->ball.yawToRobot - yawOffset;
     double ballRange = brain->data->ball.range;
-    
-    // If ball is very close, reduce velocity for precision
-    double rangeFactor = ballRange > kickRange ? 1.0 : (ballRange / kickRange) * 0.5 + 0.5;
-    
+
     double tx = cos(adjustedYaw) * ballRange;
     double ty = sin(adjustedYaw) * ballRange;
 
     double vx, vy;
 
-    if (fabs(ty) < 0.01 && fabs(adjustedYaw) < 0.01)
-    {
-        vx = vxLimit * rangeFactor;
-        vy = 0.0;
-    }
-    else
-    {
-        // Calculate velocity to reach ball position
-        vy = ty > 0 ? vyLimit : -vyLimit;
-        vx = vy / ty * tx * vxFactor;
-        
-        // Apply range factor to slow down when close
-        vx *= rangeFactor;
-        vy *= rangeFactor;
-        
-        // Cap velocities
-        if (fabs(vx) > vxLimit)
-        {
-            vy *= vxLimit / fabs(vx);
-            vx = vx > 0 ? vxLimit : -vxLimit;
-        }
-        if (fabs(vy) > vyLimit)
-        {
-            vx *= vyLimit / fabs(vy);
-            vy = vy > 0 ? vyLimit : -vyLimit;
-        }
-    }
+    // Use proportional control for both x and y directions
+    double xGain = 2; // Proportional gain for x-direction
+    double yGain = 1.0; // Proportional gain for y-direction
+    double thetaGain = 1.75; // Proportional gain for theta-direction
+    
+    vx = tx * xGain;
+    vy = ty * yGain;
+    
+    // Cap velocities to limits
+    vx = cap(vx, vxLimit, -vxLimit);
+    vy = cap(vy, vyLimit, -vyLimit);
 
     // Add some rotational velocity to align with ball
-    double vtheta = brain->data->ball.yawToRobot * 1.5;
+    double vtheta = brain->data->ball.yawToRobot * thetaGain;
     vtheta = cap(vtheta, 1.0, -1.0); // Limit rotational velocity
 
     brain->client->setVelocity(vx, vy, vtheta, false, false, false);
@@ -1315,7 +1328,6 @@ NodeStatus GoToReadyPosition::tick()
     bool isKickoff = brain->tree->getEntry<bool>("gc_is_kickoff_side");
     auto fd = brain->config->fieldDimensions;
 
-
     double tx = 0, ty = 0, ttheta = 0; 
     double longRangeThreshold = 1.0;
     double turnThreshold = 0.4;
@@ -1329,34 +1341,98 @@ NodeStatus GoToReadyPosition::tick()
     double vthetaLimit = 1.3;
     bool avoidObstacle = true;
 
-    if (role == "striker" && isKickoff) {
-        tx = - max(fd.circleRadius, 1.5);
-        ty = 0;
-        if (brain->config->numOfPlayers == 3 && brain->data->liveCount >= 2)
-        {
-            if (brain->isPrimaryStriker()) {
+    // Hard-coded ready positions based on player ID
+    int playerId = brain->config->playerId;
+    
+    if (role == "striker") {
+        // Striker positions based on player ID
+        switch (playerId) {
+            case 1: // Primary striker
+                tx = -fd.circleRadius - 1.0;
+                ty = 0.0;
+                ttheta = 0.0;
+                break;
+            case 2: // Secondary striker
+                tx = -fd.circleRadius - 1.0;
+                ty = 2.0;
+                ttheta = 0.0;
+                break;
+            case 3: // Third striker
+                tx = -fd.circleRadius - 1.0;
+                ty = -2.0;
+                ttheta = 0.0;
+                break;
+            case 4: // Fourth striker
+                tx = -fd.circleRadius - 2.5;
                 ty = 1.5;
-            } else {
+                ttheta = 0.0;
+                break;
+            case 5: // Fifth striker
+                tx = -fd.circleRadius - 2.5;
                 ty = -1.5;
-            }
+                ttheta = 0.0;
+                break;
+            default:
+                // Fallback to original logic for unknown player IDs
+                if (isKickoff) {
+                    tx = -max(fd.circleRadius, 1.5);
+                    ty = 0;
+                    if (brain->config->numOfPlayers == 3 && brain->data->liveCount >= 2) {
+                        if (brain->isPrimaryStriker()) {
+                            ty = 1.5;
+                        } else {
+                            ty = -1.5;
+                        }
+                    }
+                } else {
+                    tx = -fd.circleRadius * 1.0;
+                    ty = 0;
+                    if (brain->config->numOfPlayers == 3 && brain->data->liveCount >= 2) {
+                        if (brain->isPrimaryStriker()) {
+                            ty = 1.5;
+                        } else {
+                            ty = -1.5;
+                        }
+                    }
+                }
+                ttheta = 0;
+                break;
         }
-        ttheta = 0;
-    } else if (role == "striker" && !isKickoff) {
-        tx = - fd.circleRadius * 1.0;
-        ty = 0;
-        if (brain->config->numOfPlayers == 3 && brain->data->liveCount >= 2)
-        {
-            if (brain->isPrimaryStriker()) {
-                ty = 1.5;
-            } else {
-                ty = -1.5;
-            }
-        }
-        ttheta = 0;
     } else if (role == "goal_keeper") {
-        tx = -fd.length / 2.0 + fd.goalAreaLength;
-        ty = 0;
-        ttheta = 0;
+        // Goal keeper positions based on player ID
+        switch (playerId) {
+            case 1: // Primary goal keeper
+                tx = -fd.length / 2.0 + fd.goalAreaLength + 0.5;
+                ty = 0.0;
+                ttheta = 0.0;
+                break;
+            case 2: // Secondary goal keeper
+                tx = -fd.length / 2.0 + fd.goalAreaLength + 0.5;
+                ty = 1.5;
+                ttheta = 0.0;
+                break;
+            case 3: // Third goal keeper
+                tx = -fd.length / 2.0 + fd.goalAreaLength + 0.5;
+                ty = -1.5;
+                ttheta = 0.0;
+                break;
+            case 4: // Fourth goal keeper
+                tx = -fd.length / 2.0 + fd.goalAreaLength + 1.0;
+                ty = 2.0;
+                ttheta = 0.0;
+                break;
+            case 5: // Fifth goal keeper
+                tx = -fd.length / 2.0 + fd.goalAreaLength + 1.0;
+                ty = -2.0;
+                ttheta = 0.0;
+                break;
+            default:
+                // Fallback to original logic for unknown player IDs
+                tx = -fd.length / 2.0 + fd.goalAreaLength;
+                ty = 0;
+                ttheta = 0;
+                break;
+        }
     }
 
     brain->client->moveToPoseOnField2(tx, ty, ttheta, longRangeThreshold, turnThreshold, vxLimit, vyLimit, vthetaLimit, distTolerance / 1.5, distTolerance / 1.5, thetaTolerance, avoidObstacle);
