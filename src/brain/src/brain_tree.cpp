@@ -356,7 +356,7 @@ NodeStatus Chase::tick()
     double distanceToTarget = sqrt(target_r.x * target_r.x + target_r.y * target_r.y);
     
     // Simple proportional control for position
-    double vx = target_r.x * 2.0;
+    double vx = target_r.x * 2.0 + 1.0 * (target_r.x < 0.0 ? -1.0 : 1.0);
     double vy = target_r.y * 2.0;
     
     // Calculate final desired heading (toward goal)
