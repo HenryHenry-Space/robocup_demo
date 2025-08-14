@@ -7,7 +7,7 @@ BrainCommunication::BrainCommunication(Brain *argBrain) : brain(argBrain)
 
 BrainCommunication::~BrainCommunication()
 {
-    clearupGameControllerBroadcast();
+    clearupGameControllerUnicast();
     clearupDiscoveryBroadcast();
     clearupDiscoveryReceiver();
     clearupCommunicationUnicast();
@@ -15,17 +15,15 @@ BrainCommunication::~BrainCommunication()
 }
 
 
-void BrainCommunication::initUDPBroadcast()
+void BrainCommunication::initCommunication()
 {
-    bool enableCom = false;
-    brain->get_parameter("enable_com", enableCom);
-    if (enableCom)
+    initGameControllerUnicast();
+    if (brain->config->enableCom)
     {
         cout << RED_CODE << "Communication enabled." << RESET_CODE << endl;
         _discovery_udp_port = 20000 + brain->config->teamId;
         _unicast_udp_port = 30000 + brain->config->teamId;
 
-        initGameControllerBroadcast();
         initDiscoveryBroadcast();
         initDiscoveryReceiver();
         initCommunicationUnicast();
@@ -38,7 +36,7 @@ void BrainCommunication::initUDPBroadcast()
 }
     
 
-void BrainCommunication::initGameControllerBroadcast()
+void BrainCommunication::initGameControllerUnicast()
 {
     try
     {
@@ -49,21 +47,16 @@ void BrainCommunication::initGameControllerBroadcast()
             << RESET_CODE << endl;
         throw std::runtime_error(strerror(errno));
         }
-        // broadcast
-        int gc_broadcast_enable = 1;
-        if (setsockopt(_gc_send_socket, SOL_SOCKET, SO_BROADCAST, &gc_broadcast_enable, sizeof(gc_broadcast_enable)) < 0)
-        {
-        cout << RED_CODE << format("Failed to set gc SO_BROADCAST: %s", strerror(errno))
+        // 配置目标地址
+        string gamecontrol_ip = brain->get_parameter("game_control_ip").as_string();
+        cout << GREEN_CODE << format("GameControl IP: %s", gamecontrol_ip.c_str())
             << RESET_CODE << endl;
-        throw std::runtime_error(strerror(errno));
-        }
-        // target address
         _gcsaddr.sin_family = AF_INET;
-        _gcsaddr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+        _gcsaddr.sin_addr.s_addr = inet_addr(gamecontrol_ip.c_str());
         _gcsaddr.sin_port = htons(GAMECONTROLLER_RETURN_PORT);
 
-        _broadcast_gamecontrol_flag = true;
-        _gamecontrol_broadcast_thread = std::thread([this](){ this->broadcastToGameController(); });
+        _unicast_gamecontrol_flag = true;
+        _gamecontrol_unicast_thread = std::thread([this](){ this->unicastToGameController(); });
     }
     catch(const std::exception& e)
     {
@@ -71,9 +64,9 @@ void BrainCommunication::initGameControllerBroadcast()
     }
 }
 
-void BrainCommunication::clearupGameControllerBroadcast()
+void BrainCommunication::clearupGameControllerUnicast()
 {
-    _broadcast_gamecontrol_flag = false;
+    _unicast_gamecontrol_flag = false;
     if (_gc_send_socket >= 0)
     {
         close(_gc_send_socket);
@@ -81,9 +74,9 @@ void BrainCommunication::clearupGameControllerBroadcast()
         cout << RED_CODE << format("GameControl send socket has been closed.")
             << RESET_CODE << endl;
     }
-    if (_gamecontrol_broadcast_thread.joinable())
+    if (_gamecontrol_unicast_thread.joinable())
     {
-        _gamecontrol_broadcast_thread.join();
+        _gamecontrol_unicast_thread.join();
     }
 }
 
@@ -120,6 +113,7 @@ void BrainCommunication::initDiscoveryBroadcast()
     catch(const std::exception& e)
     {
         std::cerr << e.what() << '\n';
+        brain->log->log("error/communication", rerun::TextLog(format("Failed to initialize discovery broadcast: %s", e.what())));
     }
     
 }
@@ -164,7 +158,7 @@ void BrainCommunication::initDiscoveryReceiver()
 
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_ANY);  // listen on all interfaces
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);  
         addr.sin_port = htons(_discovery_udp_port);
         
         if (bind(_discovery_recv_socket, (sockaddr *)&addr, sizeof(addr)) < 0)
@@ -183,6 +177,7 @@ void BrainCommunication::initDiscoveryReceiver()
     catch(const std::exception& e)
     {
         std::cerr << e.what() << '\n';
+        brain->log->log("error/communication", rerun::TextLog(format("Failed to initialize discovery receiver: %s", e.what())));
     }
 }
 
@@ -202,13 +197,13 @@ void BrainCommunication::clearupDiscoveryReceiver()
     }
 }
 
-void BrainCommunication::broadcastToGameController() {
-    while (_broadcast_gamecontrol_flag)
+void BrainCommunication::unicastToGameController() {
+    while (_unicast_gamecontrol_flag)
     {
-        // cout << RED_CODE << format("broadcastToGameController header=%s version=%d teamId=%d, playerId=%d", gc_return_data.header, gc_return_data.version, brain->config->teamId, brain->config->playerId)
+        // cout << RED_CODE << format("unicastToGameController header=%s version=%d teamId=%d, playerId=%d", gc_return_data.header, gc_return_data.version, brain->config->teamId, brain->config->playerId)
         //     << RESET_CODE << endl;
         gc_return_data.team = brain->config->teamId;
-        gc_return_data.player = brain->config->playerId + 1; // player number starts with 1
+        gc_return_data.player = brain->config->playerId; // return data 的id是1,2,3,4
         gc_return_data.message = GAMECONTROLLER_RETURN_MSG_ALIVE;
 
         int ret = sendto(_gc_send_socket, &gc_return_data, sizeof(gc_return_data), 0, (sockaddr *)&_gcsaddr, sizeof(_gcsaddr));
@@ -229,6 +224,12 @@ void BrainCommunication::broadcastDiscovery() {
         msg.communicationId = _discovery_msg_id++;
         msg.teamId = brain->config->teamId;
         msg.playerId = brain->config->playerId;
+        // // msg.playerRole = tree->getEntry<string>("player_role");
+        // msg.isAlive = !brain->tree->getEntry<bool>("gc_is_under_penalty");
+        // msg.ballDetected = brain->data->ballDetected;
+        // msg.ballRange = brain->data->ball.range;
+        // msg.ballPosToField = brain->data->ball.posToField;
+        // msg.robotPoseToField = brain->data->robotPoseToField;
 
         int ret = sendto(_discovery_send_socket, &msg, sizeof(msg), 0, (sockaddr *)&_saddr, sizeof(_saddr));
         if (ret < 0)
@@ -236,6 +237,10 @@ void BrainCommunication::broadcastDiscovery() {
             cout << RED_CODE << format("sendto failed: %s", strerror(errno))
                 << RESET_CODE << endl;
         }
+        // cout << GREEN_CODE << format("broadcastDiscovery: %d", msg.communicationId)
+            // << RESET_CODE << endl;
+        brain->data->discoveryMsgId = msg.communicationId;
+        brain->data->discoveryMsgTime = brain->get_clock()->now();
         this_thread::sleep_for(chrono::milliseconds(BROADCAST_DISCOVERY_INTERVAL_MS));
     } 
 }
@@ -257,24 +262,37 @@ void BrainCommunication::spinDiscoveryReceiver() {
             continue;
         }
 
-        if (msg.validation != VALIDATION_DISCOVERY) return; // fail to pass validation
-
-        if (msg.teamId != brain->config->teamId) { // ignore other teams' messages
+        if (len != sizeof(TeamDiscoveryMsg)) {
+            cout << YELLOW_CODE << format("received TeamDiscoveryMsg packet with wrong size: %ld, expected: %ld", len, sizeof(TeamDiscoveryMsg))
+                << RESET_CODE << endl;
             continue;
         }
 
-        if (msg.playerId == brain->config->playerId) {  // ignore self messages
-            cout << YELLOW_CODE <<  format(
-                "discoveryID: %d, teamId:%d, playerId: %d, address: %s:%d",
-                msg.communicationId, msg.teamId, msg.playerId, inet_ntoa(addr.sin_addr), ntohs(addr.sin_port))
+        if (msg.validation != VALIDATION_DISCOVERY) { 
+            cout << RED_CODE << format("received TeamDiscoveryMsg packet with invalid validation: %d", msg.validation)
                 << RESET_CODE << endl;
             continue;
-        } else {
-            // teammate discovered
-            cout << GREEN_CODE <<  format(
-                "discoveryID: %d, teamId:%d, playerId: %d, address: %s:%d",
-                msg.communicationId, msg.teamId, msg.playerId, inet_ntoa(addr.sin_addr), ntohs(addr.sin_port))
+        } 
+
+        if (msg.teamId != brain->config->teamId) {
+            cout << YELLOW_CODE << format("Received message from team %d, expected team %d", msg.teamId, brain->config->teamId)
                 << RESET_CODE << endl;
+            continue;
+        }
+
+        if (msg.playerId == brain->config->playerId) { 
+            // 处理自己的消息
+            // cout << YELLOW_CODE <<  format(
+            //     "discoveryID: %d, teamId:%d, playerId: %d, address: %s:%d",
+            //     msg.communicationId, msg.teamId, msg.playerId, inet_ntoa(addr.sin_addr), ntohs(addr.sin_port))
+            //     << RESET_CODE << endl;
+            continue;
+        } else {
+            // 处理队友消息
+            // cout << GREEN_CODE <<  format(
+            //     "discoveryID: %d, teamId:%d, playerId: %d, address: %s:%d",
+            //     msg.communicationId, msg.teamId, msg.playerId, inet_ntoa(addr.sin_addr), ntohs(addr.sin_port))
+            //     << RESET_CODE << endl;
             
             auto time_now = brain->get_clock()->now();
             std::lock_guard<std::mutex> lock(_teammate_addresses_mutex);
@@ -320,11 +338,16 @@ void BrainCommunication::initCommunicationUnicast() {
     catch(const std::exception& e)
     {
         std::cerr << e.what() << '\n';
+        brain->log->log("error/communication", rerun::TextLog(format("Failed to initialize unicast communication: %s", e.what())));
     }
     
 }
 
 void BrainCommunication::unicastCommunication() {
+    auto log = [=](string msg) {
+        brain->log->setTimeNow();
+        brain->log->log("debug/sendMsg", rerun::TextLog(msg));
+    };
     while (_unicast_communication_flag) {
         cleanupExpiredTeammates();
         TeamCommunicationMsg msg;
@@ -332,8 +355,21 @@ void BrainCommunication::unicastCommunication() {
         msg.communicationId = _team_communication_msg_id++;
         msg.teamId = brain->config->teamId;
         msg.playerId = brain->config->playerId;
-        // TODO: add something you want to send to teammates, this is only an example
-        msg.testInfo = 1234567; 
+        msg.playerRole = brain->tree->getEntry<string>("player_role") == "striker" ? 1 : 2;
+        msg.isAlive = brain->data->tmImAlive;
+        msg.isLead = brain->data->tmImLead;
+        msg.ballDetected = brain->data->ballDetected;
+        msg.ballLocationKnown = brain->tree->getEntry<bool>("ball_location_known");
+        msg.ballConfidence = brain->data->ball.confidence;
+        msg.ballRange = brain->data->ball.range;
+        msg.cost = brain->data->tmMyCost;
+        msg.ballPosToField = brain->data->ball.posToField;
+        msg.robotPoseToField = brain->data->robotPoseToField;
+        msg.kickDir = brain->data->kickDir;
+        msg.thetaRb = brain->data->robotBallAngleToField;
+        msg.cmdId = brain->data->tmMyCmdId;
+        msg.cmd = brain->data->tmMyCmd;
+        log(format("ImAlive: %d, ImLead: %d, myCost: %.1f, myCmdId: %d, myCmd: %d", msg.isAlive, msg.isLead, msg.cost, msg.cmdId, msg.cmd));
 
         std::lock_guard<std::mutex> lock(_teammate_addresses_mutex);
         for (auto it = _teammate_addresses.begin(); it != _teammate_addresses.end(); ++it) {
@@ -341,6 +377,9 @@ void BrainCommunication::unicastCommunication() {
 
             // cout << GREEN_CODE << format("unicastCommunication to %s", inet_ntoa(*(in_addr *)&ip))
             //     << RESET_CODE << endl;
+            brain->data->tmIP = inet_ntoa(*(in_addr *)&ip);
+            brain->data->sendId = msg.communicationId;
+            brain->data->sendTime = brain->get_clock()->now();
             
             _unicast_saddr.sin_addr.s_addr = ip;
             int ret = sendto(_unicast_socket, &msg, sizeof(msg), 0, (sockaddr *)&_unicast_saddr, sizeof(_unicast_saddr));
@@ -377,6 +416,15 @@ void BrainCommunication::initCommunicationReceiver() {
             throw std::runtime_error(strerror(errno));
         }
 
+        // 允许地址重用
+        int reuse = 1;
+        if (setsockopt(_communication_recv_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
+        {
+            cout << RED_CODE << format("Failed to set SO_REUSEADDR: %s", strerror(errno))
+                << RESET_CODE << endl;
+            throw std::runtime_error(strerror(errno));
+        }
+
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -395,10 +443,15 @@ void BrainCommunication::initCommunicationReceiver() {
     catch(const std::exception& e)
     {
         std::cerr << e.what() << '\n';
+        brain->log->log("error/communication", rerun::TextLog(format("Failed to initialize communication receiver: %s", e.what())));
     }
 }
 
 void BrainCommunication::spinCommunicationReceiver() {
+    auto log = [=](string msg) {
+        brain->log->setTimeNow();
+        brain->log->log("debug/receiveMsg", rerun::TextLog(msg));
+    };
     sockaddr_in addr{};
     socklen_t addr_len = sizeof(addr);
 
@@ -414,22 +467,80 @@ void BrainCommunication::spinCommunicationReceiver() {
             continue;
         }
 
-        if (msg.validation != VALIDATION_COMMUNICATION) return; // fail to pass validation
-
-        if (msg.teamId != brain->config->teamId) { // ignore other teams' messages
+        if (len != sizeof(TeamCommunicationMsg)) {
+            cout << YELLOW_CODE << format("received TeamCommunicationMsg packet with wrong size: %ld, expected: %ld", len, sizeof(TeamCommunicationMsg))
+                << RESET_CODE << endl;
             continue;
         }
 
-        if (msg.playerId == brain->config->playerId) {  // ignore self messages
-            cout << CYAN_CODE <<  format(
-                "communicationId: %d, playerId: %d, testInfo: %d",
-                msg.communicationId, msg.playerId, msg.testInfo)
+        if (msg.validation != VALIDATION_COMMUNICATION) { 
+            cout << RED_CODE << format("received TeamCommunicationMsg packet with invalid validation: %d", msg.validation)
                 << RESET_CODE << endl;
+            continue;
+        }
+
+        if (msg.teamId != brain->config->teamId) { 
+            cout << YELLOW_CODE << format("Received message from team %d, expected team %d", msg.teamId, brain->config->teamId)
+                << RESET_CODE << endl;
+            continue;
+        }
+
+        if (msg.playerId == brain->config->playerId) { 
+
+            cout << CYAN_CODE <<  format(
+                "communicationId: %d, alive: %d, ballDetected: %d ballRange: %.2f playerId: %d",
+                msg.communicationId, msg.isAlive, msg.ballDetected, msg.ballRange, msg.playerId)
+                << RESET_CODE << endl;
+            brain->data->sendId = msg.communicationId;
+            brain->data->sendTime = brain->get_clock()->now();
             continue;
         } 
 
 
-        // TODO: dealing with the received message
+        // cout << GREEN_CODE <<  format(
+        //     "communicationId: %d, alive: %d, ballDetected: %d ballRange: %.2f playerId: %d",
+        //     msg.communicationId, msg.isAlive, msg.ballDetected, msg.ballRange, msg.playerId)
+        //     << RESET_CODE << endl;
+        auto tmIdx = msg.playerId - 1;
+
+        if (tmIdx < 0 || tmIdx >= HL_MAX_NUM_PLAYERS) { 
+            cout << YELLOW_CODE << format("Received message with invalid playerId: %d", msg.playerId) << RESET_CODE << endl;
+            continue;
+        }
+
+        if (brain->data->penalty[tmIdx] == SUBSTITUTE) { 
+            cout << YELLOW_CODE << format("Communication playerId %d is substitute", msg.playerId) << RESET_CODE << endl;
+            continue;
+        }
+
+        log(format("TMID: %.d, alive: %d, lead: %d, cost: %.1f, CmdId: %d, Cmd: %d", msg.playerId, msg.isAlive, msg.isLead, msg.cost, msg.cmdId, msg.cmd));
+
+        TMStatus &tmStatus = brain->data->tmStatus[tmIdx];
+        
+        tmStatus.role = msg.playerRole == 1 ? "striker" : "goal_keeper";
+        tmStatus.isAlive = msg.isAlive;
+        tmStatus.ballDetected = msg.ballDetected;
+        tmStatus.ballLocationKnown = msg.ballLocationKnown;
+        tmStatus.ballConfidence = msg.ballConfidence;
+        tmStatus.ballRange = msg.ballRange;
+        tmStatus.cost = msg.cost;
+        tmStatus.isLead = msg.isLead;
+        tmStatus.ballPosToField = msg.ballPosToField;
+        tmStatus.robotPoseToField = msg.robotPoseToField;
+        tmStatus.kickDir = msg.kickDir;
+        tmStatus.thetaRb = msg.thetaRb;
+        tmStatus.timeLastCom = brain->get_clock()->now();
+        tmStatus.cmd = msg.cmd;
+        tmStatus.cmdId = msg.cmdId;
+
+        // 检查是否收到了新的指令
+        if (msg.cmdId > brain->data->tmCmdId) {
+            brain->data->tmCmdId = msg.cmdId;
+            brain->data->tmReceivedCmd = msg.cmd;
+            brain->data->tmLastCmdChangeTime = brain->get_clock()->now();
+            log(format("Received new command from teammate %d: %d", msg.playerId, msg.cmd));
+        }
+
     }
 }
 

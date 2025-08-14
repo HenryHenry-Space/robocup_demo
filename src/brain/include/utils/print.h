@@ -50,7 +50,25 @@ inline string format(const char *str, ...)
     return string(buf);
 }
 
-// Print the string str enclosed in top and bottom borders, and return the input string itself
+// 按指定精度将 vector 输出为 string "[1.2, 3.4]" 形式
+template<typename T>
+string vec2str(const vector<T>& vec, int precision = 2) {
+    ostringstream oss;
+    oss << fixed << setprecision(precision);
+
+    oss << "[";
+    for (size_t i = 0; i < vec.size(); ++i) {
+        oss << vec[i];
+        if (i < vec.size() - 1) {
+            oss << ", ";
+        }
+    }
+    oss << "]";
+
+    return oss.str();
+}
+
+// 将 str 包在上下边框中打印出来, 返回输入的字符串本身
 inline string prettyPrint(const string &str, const string &title = "", const string &colorCode = "", int borderLength = 70, char borderChar = '=')
 {
     int headerHalfLength = floor((borderLength - title.length() - 2) / 2);
@@ -66,19 +84,19 @@ inline string prettyPrint(const string &str, const string &title = "", const str
     return str;
 }
 
-// Print the string str enclosed in a prominent red block labeled "ERROR", and return the input string itself
+// 将 str 包在一段醒目的标为 ERROR 的红色区块中打印出来, 返回输入的字符串本身
 inline string prtErr(const string &str)
 {
     return prettyPrint(str, "ERROR", RED_CODE);
 }
 
-// Print the string str enclosed in a prominent block labeled "DEBUG", and return the input string itself
-inline string prtDebug(const string &str)
+// 将 str 包在一段醒目的标为 DEBUG 的区块中打印出来, 返回输入的字符串本身
+inline string prtDebug(const string &str, string color = CYAN_CODE)
 {
-    return prettyPrint(str, "DEBUG", CYAN_CODE);
+    return prettyPrint(str, "DEBUG", color);
 }
 
-// Print the string str enclosed in a prominent block labeled "DEBUG", and return the input string itself.
+// 将 str 包在一段醒目的标为 DEBUG 的区块中打印出来, 返回输入的字符串本身
 inline string prtWarn(const string &str)
 {
     return prettyPrint(str, "WARN", YELLOW_CODE);

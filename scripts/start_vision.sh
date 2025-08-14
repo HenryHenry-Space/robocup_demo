@@ -1,5 +1,5 @@
 #!/bin/bash
-
+echo "[START VISION]"
 cd `dirname $0`
 cd ..
 

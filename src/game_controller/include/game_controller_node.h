@@ -17,30 +17,30 @@ public:
     GameControllerNode(string name);
     ~GameControllerNode();
 
-    // init UDP Socket
+    // 初始化 UDP Socket
     void init();
 
-    // Enter the loop, receive UDP broadcast messages, process them and then publish them to the Ros2 Topic.
+    // 进入循环，接收 UDP 广播消息，处理后发布到 Ros2 Topic 中
     void spin();
 
 private:
-    // Check whether the received packet is from the whitelisted machine.
+    // 检查收到的包是否来自白名单机器
     bool check_ip_white_list(string ip);
 
-    // Process the data packet (copy field by field).
-    void handle_packet(RoboCupGameControlData &data, game_controller_interface::msg::GameControlData &msg);
+    // 处理数据包（逐字段复制）
+    void handle_packet(HlRoboCupGameControlData &data, game_controller_interface::msg::GameControlData &msg);
 
-    // The listening port, read from the configuration file.
+    // 监听端口，从配置文件读
     int _port;
-    // Whether to enable the IP whitelist.
+    // 是否启用 IP 白名单
     bool _enable_ip_white_list;
-    // The list of IPs in the whitelist.
+    // IP 白名单列表
     vector<string> _ip_white_list;
 
     // UDP Socket
     int _socket;
     // thread
-
+    
     thread _thread;
 
     // Ros2 publisher

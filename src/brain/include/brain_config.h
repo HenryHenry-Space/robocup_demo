@@ -5,78 +5,97 @@
 
 #include "types.h"
 #include "utils/math.h"
+#include "RoboCupGameControlData.h"
+
 
 using namespace std;
 
 /**
- * Stores configuration values required by the Brain. These values should be confirmed during initialization
- * and remain read-only during the robot's decision-making process.
- * Values that need to change during the decision process should be placed in BrainData.
- *
- * Note:
- * 1. The configuration file will be read from config/config.yaml.
- * 2. If config/config_local.yaml exists, its values will override those in config/config.yaml.
+ * 存储 Brain 需要的一些配置值，这些值应该是初始化就确认好了，在机器人决策过程中只读不改的
+ * 需要在决策过程中变化的值，应该放到 BrainData 中
+ * 注意：
+ * 1、配置文件会从 config/config.yaml 中读取
+ * 2、如果存在 config/config_local.yaml，将会覆盖 config/config.yaml 的值
+ * 
  */
-
 class BrainConfig
 {
 public:
-    // ---------- start config from config.yaml ---------------------------------------------
-    // These variables are the raw values directly read from the configuration file.
-    // If new configurations are added to the configuration file, corresponding variables should be added here to store them.
-    // These values will be overwritten in BrainNode, so even if a configuration is not explicitly defined in config.yaml,
-    // the default values here will not take effect.
-    // The actual default values should be configured in the BrainNode's declare_parameter.
-    int teamId;            // Corresponds to game.team_id
-    int playerId;          // Corresponds to game.player_id
-    string fieldType;      // Corresponds to game.field_type  "adult_size"(14*9) | "kid_size" (9*6)
-    string playerRole;     // Corresponds to game.player_role   "striker" | "goal_keeper"
-    string playerStartPos; // Corresponds to game.player_start_post  "left" | "right"
+    int teamId;                
+    int playerId;               
+    string fieldType;           
+    string playerRole;          
+    
+    double robotHeight;        
+    double robotOdomFactor;    
+    double vxFactor;            
+    double yawOffset;         
 
-    double robotHeight;     // Corresponds to robot.robot_height
-    double robotOdomFactor; // Corresponds to robot.odom_factor odom
-    double vxFactor;        // Corresponds to robot.vx_factor fix the issue where the actual vx is larger than the command
-    double yawOffset;       // Corresponds to robot.yaw_offset fix the issue of leftward bias during distance measurement
+    bool enableCom;             
 
-    bool rerunLogEnable;       // Corresponds to rerunLog.enable  Whether to enable rerunLog
-    string rerunLogServerAddr; // Corresponds to rerunLog.server_addr  rerunLog address
-    int rerunLogImgInterval;   // Corresponds to rerunLog.img_interval the interval to record the images
+    bool rerunLogEnableTCP;    
+    string rerunLogServerIP;    
+    bool rerunLogEnableFile;    
+    string rerunLogLogDir;     
+    double rerunLogMaxFileMins;         
 
-    string treeFilePath; //  It is no longer placed in config.yaml; the path to the behavior-tree file is now specified in launch.py.
-    // ----------  end config from config.yaml ---------------------------------------------
+    int rerunLogImgInterval;   
+    
+    string treeFilePath;       
 
-    // game parameters
-    FieldDimensions fieldDimensions;
+    FieldDimensions fieldDimensions; 
+    vector<FieldLine> mapLines;       
+    vector<MapMarking> mapMarkings;   
+    
+    int numOfPlayers = 2;           
 
-    // Camera resolution
+    double collisionThreshold;       
+    double safeDistance;              
+    double avoidSecs;                
+
+
     double camPixX = 1280;
     double camPixY = 720;
 
-    // Camera angle
+
     double camAngleX = deg2rad(90);
     double camAngleY = deg2rad(65);
 
-    // Head rotation soft limit
+    double camfx = 643.898;
+    double camfy = 643.216;
+    double camcx = 649.038;
+    double camcy = 357.21;
+
+    Eigen::Matrix4d camToHead;
+
     double headYawLimitLeft = 1.1;
     double headYawLimitRight = -1.1;
-    double headPitchLimitUp = 0.0;
-
-    // Speed limit
-    double vxLimit = 1.2;
+    double headPitchLimitUp = 0.45; 
+    double vxLimit = 0.8;
     double vyLimit = 0.4;
-    double vthetaLimit = 1.5;
+    double vthetaLimit = 1.0;
 
-    // Strategy parameters
-    double safeDist = 2.0; // Safety distance for collision detection. If the distance is smaller than this value, a collision is considered.
+    double safeDist = 5.0;                  
     double goalPostMargin = 0.4;
-    // Calculate the margin of the goalpost, used to compute the angle of the goalpost. The larger the margin, the smaller the goal appears during calculations.
-    // During a touch event, this margin is different and is typically smaller.
-    double goalPostMarginForTouch = 0.1;
-    double memoryLength = 3.0; // The number of seconds during which the ball is not visible, after which it is considered lost.
+    double goalPostMarginForTouch = 0.1; 
+    double ballConfidenceThreshold;        
+    bool treatPersonAsRobot = false;    
+    double ballOutThreshold = 2;       
+    double tmBallDistThreshold = 4.0;      
+    bool limitNearBallSpeed = true;        
+    double nearBallSpeedLimit = 0.2;      
+    double nearBallRange = 3.0;           
 
-    // After Brain fills in the parameters, it calls handle() to process the parameters (such as calibration, calculations, etc.),
+    int pfMinMarkerCnt = 5;
+    double pfMaxResidual = 0.3;
+
+    bool soundEnable = false;
+    string soundPack = "espeak";
+
+    void calcMapLines();
+    void calcMapMarkings();
+
     void handle();
-
-    // Output the configuration information to the specified output stream (for debugging).
+    
     void print(ostream &os);
 };
