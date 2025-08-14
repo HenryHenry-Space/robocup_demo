@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
     }
     node->Init(config_template_path, config_path);
 
-    rclcpp::executors::MultiThreadedExecutor executor;
+    rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 4);
     executor.add_node(node);
     executor.spin();
 
