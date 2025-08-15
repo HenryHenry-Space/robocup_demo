@@ -1066,13 +1066,24 @@ NodeStatus Kick::onRunning()
     getInput("kick_range", kickRange);
     getInput("fixed_velocity_magnitude", fixedVelocityMagnitude);
     double yawOffset = brain->config->yawOffset;
+    
+    // Get y offset for ball position adjustment (default to 0.15)
+    double yOffset = 0.15;
+    getInput("y_offset", yOffset);
 
-    // Calculate direction to ball (adjusted for yaw offset)
+    // Calculate direction to ball (adjusted for yaw offset and y offset)
     double adjustedYaw = brain->data->ball.yawToRobot - yawOffset;
     
-    // Use fixed velocity magnitude in the direction of the ball
-    double vx = fixedVelocityMagnitude * cos(adjustedYaw);
-    double vy = fixedVelocityMagnitude * sin(adjustedYaw);
+    // Adjust ball position by y offset in robot coordinates
+    double adjustedBallX = brain->data->ball.posToRobot.x;
+    double adjustedBallY = brain->data->ball.posToRobot.y + yOffset;
+    
+    // Calculate direction to adjusted ball position
+    double adjustedDirection = atan2(adjustedBallY, adjustedBallX);
+    
+    // Use fixed velocity magnitude in the direction of the adjusted ball position
+    double vx = fixedVelocityMagnitude * cos(adjustedDirection);
+    double vy = fixedVelocityMagnitude * sin(adjustedDirection);
     
     // Box clip velocities to preserve direction while respecting limits
     double scale = 1.0;

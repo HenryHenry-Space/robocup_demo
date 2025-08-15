@@ -308,6 +308,7 @@ public:
             InputPort<double>("vx_limit", 1.2, "vx limit"),
             InputPort<double>("vy_limit", 0.4, "vy limit"),
             InputPort<double>("fixed_velocity_magnitude", 0.8, "Fixed velocity magnitude when walking towards the ball"),
+            InputPort<double>("y_offset", -0.15, "y offset"),
         };
     }
 
