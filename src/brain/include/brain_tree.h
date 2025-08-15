@@ -1,7 +1,9 @@
 #pragma once
 
+#include <tuple>
 #include <behaviortree_cpp/behavior_tree.h>
 #include <behaviortree_cpp/bt_factory.h>
+#include <algorithm>
 
 #include "types.h"
 
@@ -23,7 +25,7 @@ public:
     template <typename T>
     inline T getEntry(const string &key)
     {
-        T value = T();
+        T value;
         [[maybe_unused]] auto res = tree.rootBlackboard()->get<T>(key, value);
         return value;
     }
@@ -40,25 +42,21 @@ private:
     Brain *brain;
 
     /**
-     * Initialize the entries in the blackboard.
-     * Note: For newly added fields, set a default value here.
+     * 初始化 blackboard 里的 entry，注意新加字段，在这里设置个默认值
      */
-
     void initEntry();
 };
 
-class StrikerDecide : public SyncActionNode
+
+class CalcKickDir : public SyncActionNode 
 {
 public:
-    StrikerDecide(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
+    CalcKickDir(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
 
     static PortsList providedPorts()
     {
         return {
-            InputPort<double>("chase_threshold", 1.0, "Perform the chasing action if the distance exceeds this threshold"),
-            InputPort<string>("decision_in", "", "Used to read the last decision"),
-            InputPort<string>("position", "offense", "offense | defense, determines the direction to kick the ball"),
-            OutputPort<string>("decision_out"),
+            InputPort<double>("cross_threshold", 0.2, "可进门的角度范围小于这个值时, 则传中")
         };
     }
 
@@ -68,6 +66,30 @@ private:
     Brain *brain;
 };
 
+
+class StrikerDecide : public SyncActionNode
+{
+public:
+    StrikerDecide(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
+
+    static PortsList providedPorts()
+    {
+        return {
+            InputPort<double>("chase_threshold", 1.0, "超过这个距离, 执行追球动作"),
+            InputPort<string>("decision_in", "", "用于读取上一次的 decision"),
+            InputPort<string>("position", "offense", "offense | defense, 决定了向哪个方向踢球"),
+            OutputPort<string>("decision_out")};
+    }
+
+    NodeStatus tick() override;
+
+private:
+    Brain *brain;
+    double lastDeltaDir; 
+    rclcpp::Time timeLastTick; 
+};
+
+
 class GoalieDecide : public SyncActionNode
 {
 public:
@@ -76,10 +98,15 @@ public:
     static BT::PortsList providedPorts()
     {
         return {
-            InputPort<double>("chase_threshold", 1.0, "Perform the chasing action if the distance exceeds this threshold"),
-            InputPort<double>("adjust_angle_tolerance", 0.1, "Consider the adjustment successful if the angle is smaller than this value"),
-            InputPort<double>("adjust_y_tolerance", 0.1, "Consider the y-direction adjustment successful if the offset is smaller than this value"),
-            InputPort<string>("decision_in", "", "Used to read the last decision"),
+            InputPort<double>("chase_threshold", 1.0, "超过这个距离, 执行追球动作"),
+            InputPort<double>("adjust_angle_tolerance", 0.1, "小于这个角度, 认为 adjust 已经成功"),
+            InputPort<double>("adjust_y_tolerance", 0.1, "y 方向偏移小于这个值, 认为 y 方向 adjust 成功"),
+            InputPort<string>("decision_in", "", "用于读取上一次的 decision"),
+            InputPort<double>("auto_visual_kick_enable_dist_min", 2.0, "自动视觉踢球启用时球的最小距离"),
+            InputPort<double>("auto_visual_kick_enable_dist_max", 3.0, "自动视觉踢球启用时球的最大距离"),
+            InputPort<double>("auto_visual_kick_enable_angle", 0.785, "自动视觉踢球启用时球的角度范围"),
+            InputPort<double>("auto_visual_kick_obstacle_dist_threshold", 3.0, "自动视觉踢球障碍物距离阈值，如果该距离内有障碍物，则不执行自动视觉踢球"),
+            InputPort<double>("auto_visual_kick_obstacle_angle_threshold", 1.744, "自动视觉踢球障碍物在前方角度范围内的阈值，如果该角度内有障碍物，则不执行自动视觉踢球"),
             OutputPort<string>("decision_out"),
         };
     }
@@ -89,6 +116,7 @@ public:
 private:
     Brain *brain;
 };
+
 
 class CamTrackBall : public SyncActionNode
 {
@@ -105,6 +133,7 @@ private:
     Brain *brain;
 };
 
+
 class CamFindBall : public SyncActionNode
 {
 public:
@@ -113,16 +142,17 @@ public:
     NodeStatus tick() override;
 
 private:
-    double _cmdSequence[6][2];    // The sequence of actions for finding the ball, in which the robot looks towards these positions in order.
-    rclcpp::Time _timeLastCmd;    // The time of the last command execution, used to ensure there is a time interval between commands.
-    int _cmdIndex;                // The current step in the cmdSequence that is being executed.
-    long _cmdIntervalMSec;        // The time interval (in milliseconds) between executing actions in the sequence.
-    long _cmdRestartIntervalMSec; // If the time since the last execution exceeds this value, the sequence will restart from step 0.
+    double _cmdSequence[6][2];    
+    rclcpp::Time _timeLastCmd;   
+    int _cmdIndex;                
+    long _cmdIntervalMSec;        
+    long _cmdRestartIntervalMSec; 
 
     Brain *brain;
+
 };
 
-// The robot performs the action of finding the ball, which needs to be used in conjunction with CamFindBall.
+
 class RobotFindBall : public StatefulActionNode
 {
 public:
@@ -131,7 +161,7 @@ public:
     static PortsList providedPorts()
     {
         return {
-            InputPort<double>("vyaw_limit", 1.0, "yaw limit"),
+            InputPort<double>("vyaw_limit", 1.0, "转向的速度上限"),
         };
     }
 
@@ -142,11 +172,73 @@ public:
     void onHalted() override;
 
 private:
-    double _turnDir; // 1.0 left -1.0 right
+    double _turnDir; 
     Brain *brain;
 };
 
-// Chasing the ball: If the ball is behind the robot, it will move around to the back of the ball.
+
+class CamFastScan : public StatefulActionNode
+{
+public:
+    CamFastScan(const string &name, const NodeConfig &config, Brain *_brain) : StatefulActionNode(name, config), brain(_brain) {}
+
+    static PortsList providedPorts()
+    {
+        return {
+            InputPort<double>("msecs_interval", 300, "在同一个位置停留多少毫秒"),
+        };
+    }
+
+    NodeStatus onStart() override;
+
+    NodeStatus onRunning() override;
+
+    void onHalted() override {};
+
+private:
+    double _cmdSequence[7][2] = {
+        {0.45, 1.1},
+        {0.45, 0.0},
+        {0.45, -1.1},
+        {1.0, -1.1},
+        {1.0, 0.0},
+        {1.0, 1.1},
+        {0.45, 0.0},
+    };    
+    rclcpp::Time _timeLastCmd;    
+    int _cmdIndex = 0;               
+    Brain *brain;
+};
+
+class TurnOnSpot : public StatefulActionNode
+{
+public:
+    TurnOnSpot(const string &name, const NodeConfig &config, Brain *_brain) : StatefulActionNode(name, config), brain(_brain) {}
+
+    static PortsList providedPorts()
+    {
+        return {
+            InputPort<double>("rad", 0, "转多少弧度, 向左为正"),
+            InputPort<bool>("towards_ball", false, "为 true 时, 不考虑 rad 的正负号, 而是转向上一次看到不球的方向.")
+        };
+    }
+
+    NodeStatus onStart() override;
+
+    NodeStatus onRunning() override;
+
+    void onHalted() override {};
+
+private:
+    double _lastAngle; 
+    double _angle;
+    double _cumAngle; 
+    double _msecLimit = 5000;  
+    rclcpp::Time _timeStart;
+    Brain *brain;
+};
+
+
 class Chase : public SyncActionNode
 {
 public:
@@ -155,10 +247,12 @@ public:
     static PortsList providedPorts()
     {
         return {
-            InputPort<double>("vx_limit", 0.4, "Maximum x velocity for chasing the ball"),
-            InputPort<double>("vy_limit", 0.4, "Maximum y velocity for chasing the ball"),
-            InputPort<double>("vtheta_limit", 0.1, "Maximum angular velocity for real-time direction adjustment while chasing the ball"),
-            InputPort<double>("dist", 1.0, "The target distance behind the ball for chasing it"),
+            InputPort<double>("vx_limit", 0.6, "追球的最大 x 速度"),
+            InputPort<double>("vy_limit", 0.4, "追球的最大 y 速度"),
+            InputPort<double>("vtheta_limit", 1.0, "追球时, 实时调整方向的速度不大于这个值"),
+            InputPort<double>("dist", 0.1, "追球的目标是球后面多少距离"),
+            InputPort<double>("safe_dist", 4.0, "circle back 时, 保持的安全距离"),
+            InputPort<double>("fixed_velocity_magnitude", 0.8, "Fixed velocity magnitude when walking towards the target"),
         };
     }
 
@@ -166,11 +260,11 @@ public:
 
 private:
     Brain *brain;
-    string _state;     // circl_back, chase;
-    double _dir = 1.0; // 1.0 circle back from left, -1.0  circle back from right
+    string _state;     
+    double _dir = 1.0; 
 };
 
-// After approaching the ball, adjust to the appropriate kicking angle for offense or defense.
+
 class Adjust : public SyncActionNode
 {
 public:
@@ -179,13 +273,18 @@ public:
     static PortsList providedPorts()
     {
         return {
-            InputPort<double>("turn_threshold", 0.2, "If the angle to the ball exceeds this value, the robot will first turn to face the ball"),
-            InputPort<double>("vx_limit", 0.1, "Limit for vx during adjustment, [-limit, limit]"),
-            InputPort<double>("vy_limit", 0.1, "Limit for vy during adjustment, [-limit, limit]"),
-            InputPort<double>("vtheta_limit", 0.4, "Limit for vtheta during adjustment, [-limit, limit]"),
-            InputPort<double>("max_range", 1.5, "When the ball range exceeds this value, move slightly forward"),
-            InputPort<double>("min_range", 1.0, "When the ball range is smaller than this value, move slightly backward"),
-            InputPort<string>("position", "offense", "offense | defense, determines which direction to kick the ball"),
+            InputPort<double>("turn_threshold", 3.25, "球的角度大于这个值, 机器人先转身面向球, 直线运动先暂停"),
+            InputPort<double>("vx_limit", 0.05, "调整过过程中 vx 的限制 [-limit, limit]"),
+            InputPort<double>("vy_limit", 0.05, "调整过过程中 vy 的限制 [-limit, limit]"),
+            InputPort<double>("vtheta_limit", 0.1, "调整过过程中 vtheta 的限制 [-limit, limit]"),
+            InputPort<double>("range", 2.25, "ball  range 保持这个值"),
+            InputPort<double>("vtheta_factor", 3.0, "调整角度时, vtheta 的乘数, 越大转向越快"),
+            InputPort<double>("tangential_speed_far", 0.2, "调整角度时, 较远时的切线速度"),
+            InputPort<double>("tangential_speed_near", 0.15, "调整角度时, 较近时的切线速度"),
+            InputPort<double>("near_threshold", 0.8, "距离目标小于这个值时, 使用 near speed"),
+            InputPort<double>("no_turn_threshold", 0.02, "角度差小于这个值时, 不转身"),
+            InputPort<double>("turn_first_threshold", 0.8, "角度差大于这个值时, 先转身, 不移动"),
+
         };
     }
 
@@ -195,6 +294,7 @@ private:
     Brain *brain;
 };
 
+// 执行踢球动作
 class Kick : public StatefulActionNode
 {
 public:
@@ -203,10 +303,12 @@ public:
     static PortsList providedPorts()
     {
         return {
-            InputPort<int>("min_msec_kick", 500, "The minimum duration (in milliseconds) for executing a kick action"),
-            InputPort<int>("msec_stand", 500, "The number of milliseconds after issuing a stop command"),
+            InputPort<int>("max_msec_kick", 3000, "The maximum duration (in milliseconds) for executing a kick action"),
+            InputPort<double>("kick_range", 0.3, "Range threshold to reduce velocity for precision"),
             InputPort<double>("vx_limit", 1.2, "vx limit"),
             InputPort<double>("vy_limit", 0.4, "vy limit"),
+            InputPort<double>("fixed_velocity_magnitude", 0.8, "Fixed velocity magnitude when walking towards the ball"),
+            InputPort<double>("y_offset", -0.15, "y offset"),
         };
     }
 
@@ -219,12 +321,36 @@ public:
 
 private:
     Brain *brain;
-    rclcpp::Time _startTime;
-    int _msecKick = 1000;
+    rclcpp::Time _startTime; 
+    double _initialBallRange = 0.0;
 };
 
-// A full sweep of the field of view involves first tilting the head upwards in one direction,
-// and then lowering it to sweep in another direction, completing one full circle.
+
+class StandStill : public StatefulActionNode
+{
+public:
+    StandStill(const string &name, const NodeConfig &config, Brain *_brain) : StatefulActionNode(name, config), brain(_brain) {}
+
+    static PortsList providedPorts()
+    {
+        return {
+            InputPort<int>("msecs", 1000, "站立多少毫秒"),
+        };
+    }
+
+    NodeStatus onStart() override;
+
+    NodeStatus onRunning() override;
+
+    // callback to execute if the action was aborted by another node
+    void onHalted() override;
+
+private:
+    Brain *brain;
+    rclcpp::Time _startTime; 
+};
+
+
 class CamScanField : public SyncActionNode
 {
 public:
@@ -233,11 +359,11 @@ public:
     static BT::PortsList providedPorts()
     {
         return {
-            InputPort<double>("low_pitch", 0.4, "The minimum pitch when looking upwards"),
-            InputPort<double>("high_pitch", 0.2, "The minimum pitch when looking upwards"),
-            InputPort<double>("left_yaw", 0.8, "The maximum yaw when looking to the left"),
-            InputPort<double>("right_yaw", -0.8, " The minimum yaw when looking to the right"),
-            InputPort<int>("msec_cycle", 4000, "How many milliseconds it takes to complete one full rotation"),
+            InputPort<double>("low_pitch", 0.6, "向下看时的最大 pitch"),
+            InputPort<double>("high_pitch", 0.45, "向上看时的最小 pitch"),
+            InputPort<double>("left_yaw", 0.8, "向左看时的最大 yaw"),
+            InputPort<double>("right_yaw", -0.8, "向右看时的最小 yaw"),
+            InputPort<int>("msec_cycle", 4000, "多少毫秒转一圈"),
         };
     }
 
@@ -247,32 +373,7 @@ private:
     Brain *brain;
 };
 
-// SelfLocate: Uses particle filtering to correct the current position, compensating for odometry drift.
-class SelfLocate : public SyncActionNode
-{
-public:
-    SelfLocate(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
 
-    NodeStatus tick() override;
-
-    static PortsList providedPorts()
-    {
-        return {
-            // enter_field: Used when entering the field, at this point, the robot is definitely in its own half, and the direction can be further narrowed based on the position of its own goal.
-            // trust_direction: Used in normal conditions, where the odom information is generally accurate (the robot has not fallen over).
-            // trust_position: Used after the robot has fallen. At this point, x and y are reliable, but the direction is not. (Note: if near the midfield line, the position should also be considered unreliable due to the symmetry of the field).
-            // trust_nothing: An extreme case where neither x nor y is reliable, and the robot needs to identify its direction using landmarks.
-            // face_forward: The direction facing the opponent's goal, primarily used for testing.
-            InputPort<string>("mode", "enter_field", "must be one of [enter_field, trust_direction, trust_position, trust_nothing, face_forward]"),
-        };
-    };
-
-private:
-    Brain *brain;
-};
-
-// Move to a Pose in the Field coordinate system, including the final target orientation.
-// It is recommended to use this together with CamScanField and SelfLocate for a more accurate final position.
 class MoveToPoseOnField : public SyncActionNode
 {
 public:
@@ -281,17 +382,18 @@ public:
     static BT::PortsList providedPorts()
     {
         return {
-            InputPort<double>("x", 0, "Target x-coordinate in the Field coordinate system"),
-            InputPort<double>("y", 0, "Target y-coordinate in the Field coordinate system"),
-            InputPort<double>("theta", 0, "Final orientation of the target in the Field coordinate system"),
-            InputPort<double>("long_range_threshold", 1.5, "When the distance to the target point exceeds this value, prioritize moving towards it rather than fine-tuning position and orientation"),
-            InputPort<double>("turn_threshold", 0.4, "For long distances, if the angle to the target point exceeds this threshold, turn towards the target point first"),
-            InputPort<double>("vx_limit", 1.0, "x limit"),
-            InputPort<double>("vy_limit", 0.5, "y limit"),
-            InputPort<double>("vtheta_limit", 0.4, "theta limit"),
-            InputPort<double>("x_tolerance", 0.2, "X tolerance"),
-            InputPort<double>("y_tolerance", 0.2, "y tolerance"),
-            InputPort<double>("theta_tolerance", 0.1, "theta tolerance"),
+            InputPort<double>("x", 0, "目标 x 坐标, Field 坐标系"),
+            InputPort<double>("y", 0, "目标 y 坐标, Field 坐标系"),
+            InputPort<double>("theta", 0, "目标最终朝向, Field 坐标系"),
+            InputPort<double>("long_range_threshold", 1.5, "目标点的距离超过这个值时, 优先走过去, 而不是细调位置和方向"),
+            InputPort<double>("turn_threshold", 0.4, "长距离时, 目标点的方向超这个数值时, 先转向目标点"),
+            InputPort<double>("vx_limit", 0.8, "x 限速"),
+            InputPort<double>("vy_limit", 0.5, "y 限速"),
+            InputPort<double>("vtheta_limit", 0.2, "theta 限速"),
+            InputPort<double>("x_tolerance", 0.5, "x 容差"),
+            InputPort<double>("y_tolerance", 0.5, "y 容差"),
+            InputPort<double>("theta_tolerance", 0.5, "theta 容差"),
+            InputPort<bool>("avoid_obstacle", false, "是否避障")
         };
     }
 
@@ -301,56 +403,101 @@ private:
     Brain *brain;
 };
 
-// 条件起身
-class CheckAndStandUp : public SyncActionNode
+/**
+ * @brief Moves robot to hard-coded ready position based on player ID and role
+ * 
+ * Ready positions are now hard-coded for each robot based on their player_id:
+ * 
+ * Strikers:
+ * - Player 1: Center striker (-circleRadius-1.0, 0.0)
+ * - Player 2: Right striker (-circleRadius-1.0, 2.0) 
+ * - Player 3: Left striker (-circleRadius-1.0, -2.0)
+ * - Player 4: Right back striker (-circleRadius-2.5, 1.5)
+ * - Player 5: Left back striker (-circleRadius-2.5, -1.5)
+ * 
+ * Goal Keepers:
+ * - Player 1: Center goalie (-length/2+goalAreaLength+0.5, 0.0)
+ * - Player 2: Right goalie (-length/2+goalAreaLength+0.5, 1.5)
+ * - Player 3: Left goalie (-length/2+goalAreaLength+0.5, -1.5)
+ * - Player 4: Right back goalie (-length/2+goalAreaLength+1.0, 2.0)
+ * - Player 5: Left back goalie (-length/2+goalAreaLength+1.0, -2.0)
+ * 
+ * Falls back to original dynamic logic for unknown player IDs
+ */
+class GoToReadyPosition : public SyncActionNode
 {
 public:
-CheckAndStandUp(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
+    GoToReadyPosition(const std::string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
 
-    static PortsList providedPorts() {
-        return {};
+    static BT::PortsList providedPorts()
+    {
+        return {
+            InputPort<double>("dist_tolerance", 0.8, "x tolerance"),
+            InputPort<double>("theta_tolerance", 0.5, "theta tolerance"),
+            InputPort<double>("vx_limit", 0.8, "vx limit"),
+            InputPort<double>("vy_limit", 0.5, "vy limit"),
+        };
     }
 
-    NodeStatus tick() override;
+    BT::NodeStatus tick() override;
 
 private:
     Brain *brain;
 };
 
-// 起身后的转身定位
-class RotateForRelocate : public StatefulActionNode
+
+class GoToGoalBlockingPosition : public SyncActionNode
 {
 public:
-    RotateForRelocate(const string &name, const NodeConfig &config, Brain *_brain) : StatefulActionNode(name, config), brain(_brain) {}
+    GoToGoalBlockingPosition(const std::string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
 
-    static PortsList providedPorts()
+    static BT::PortsList providedPorts()
     {
         return {
-            InputPort<double>("vyaw_limit", 1.0, "转向的速度上限"),
-            InputPort<int>("max_msec_locate", 5000, "最长重新定位时间"),
+            InputPort<double>("dist_tolerance", 0.8, "dist tolerance, within which considered arrived."),
+            InputPort<double>("theta_tolerance", 0.8, "theta tolerance, winin which considered arrived."),
+            InputPort<double>("vx_limit", 0.1, "x speed limit"),
+            InputPort<double>("vy_limit", 0.1, "y speed limit"),
+            InputPort<double>("dist_to_goalline", 2.5, "机器人站在门前多少距离"),
         };
     }
 
-    NodeStatus onStart() override;
-
-    NodeStatus onRunning() override;
-
-    void onHalted() override;
+    BT::NodeStatus tick() override;
 
 private:
     Brain *brain;
-    rclcpp::Time _lastSuccessfulLocalizeTime;
-    rclcpp::Time _startTime;
+};
+
+
+class Assist : public SyncActionNode
+{
+public:
+    Assist(const std::string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
+
+    static BT::PortsList providedPorts()
+    {
+        return {
+            InputPort<double>("dist_tolerance", 0.8, "dist tolerance, within which considered arrived."),
+            InputPort<double>("theta_tolerance", 0.8, "theta tolerance, winin which considered arrived."),
+            InputPort<double>("vx_limit", 0.1, "x speed limit"),
+            InputPort<double>("vy_limit", 0.1, "y speed limit"),
+            InputPort<double>("dist_to_goalline", 2.5, "机器人站在门前多少距离"),
+        };
+    }
+
+    BT::NodeStatus tick() override;
+
+private:
+    Brain *brain;
 };
 
 
 /**
- * @brief Set the robot's velocity.
+ * @brief 设置机器人的速度
  *
- * @param x, y, theta double, the robot's velocity in the x and y directions (m/s) and angular velocity (rad/s) for counterclockwise rotation.
- * Default values are 0. If all values are 0, it is equivalent to issuing a command to make the robot stand still.
+ * @param x,y,theta double, 机器人在 x，y 方向上的速度（m/s）和逆时针转动的角速度（rad/s), 默认值为 0. 全为 0 时，即相当于给出站立不动指令
+ *
  */
-
 class SetVelocity : public SyncActionNode
 {
 public:
@@ -364,6 +511,22 @@ public:
             InputPort<double>("y", 0, "Default y is 0"),
             InputPort<double>("theta", 0, "Default  theta is 0"),
         };
+    }
+
+private:
+    Brain *brain;
+};
+
+// 原地踏步
+class StepOnSpot : public SyncActionNode
+{
+public:
+    StepOnSpot(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
+
+    NodeStatus tick() override;
+    static PortsList providedPorts()
+    {
+        return {};
     }
 
 private:
@@ -390,6 +553,73 @@ private:
     Brain *brain;
 };
 
+class MoveHead : public SyncActionNode
+{
+public:
+    MoveHead(const std::string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain)
+    {
+    }
+
+    NodeStatus tick() override;
+
+    static BT::PortsList providedPorts()
+    {
+        return {
+            InputPort<double>("pitch", 0, "target head pitch"),
+            InputPort<double>("yaw", 0, "target head yaw"),
+        };
+    }
+
+private:
+    Brain *brain;
+};
+
+
+class CheckAndStandUp : public SyncActionNode
+{
+public:
+CheckAndStandUp(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
+
+    static PortsList providedPorts() {
+        return {};
+    }
+
+    NodeStatus tick() override;
+
+private:
+    Brain *brain;
+};
+
+
+class GoToFreekickPosition : public StatefulActionNode
+{
+public:
+    GoToFreekickPosition(const string &name, const NodeConfig &config, Brain *_brain) : StatefulActionNode(name, config), brain(_brain) {}
+
+    static PortsList providedPorts()
+    {
+        return {
+            InputPort<string>("side", "attack", "attack | defense"),
+            InputPort<double>("attack_dist", 0.7, "attack side target dist to ball"),
+            InputPort<double>("defense_dist", 1.9, "defense side target dist to ball"),
+            InputPort<double>("vx_limit", 1.2, "vx limit"),
+            InputPort<double>("vy_limit", 0.5, "vy limit"),
+
+        };
+    }
+
+    NodeStatus onStart() override;
+
+    NodeStatus onRunning() override;
+
+    void onHalted() override;
+
+private:
+    Brain *brain;
+    bool _isInFinalAdjust = false; 
+};
+
+// 回到场地内
 class GoBackInField : public SyncActionNode
 {
 public:
@@ -408,41 +638,7 @@ private:
     Brain *brain;
 };
 
-class TurnOnSpot : public StatefulActionNode
-{
-public:
-    TurnOnSpot(const string &name, const NodeConfig &config, Brain *_brain) : StatefulActionNode(name, config), brain(_brain) {}
 
-    static PortsList providedPorts()
-    {
-        return {
-            InputPort<double>("rad", 0, "转多少弧度, 向左为正"),
-            InputPort<bool>("towards_ball", false, "为 true 时, 不考虑 rad 的正负号, 而是转向上一次看到不球的方向.")
-        };
-    }
-
-    NodeStatus onStart() override;
-
-    NodeStatus onRunning() override;
-
-    void onHalted() override {};
-
-private:
-    double _lastAngle; // 上个 tick 的弧度
-    double _angle; // 转多少弧度
-    double _cumAngle; // 共转了多少弧度
-    double _msecLimit = 5000;  // 最多执行多少毫秒 (防止卡死)
-    rclcpp::Time _timeStart; // 进入节点的时间 
-    Brain *brain;
-};
-
-
-
-// ------------------------------- FOR DEMO -------------------------------
-
-// This node is for demonstrating chasing the ball and is not used during actual gameplay.
-// The difference from Chase is that Simple Chase just moves towards the ball without circling around to the ball's back,
-// and therefore does not require field, localization, or video to run.
 class SimpleChase : public SyncActionNode
 {
 public:
@@ -451,10 +647,10 @@ public:
     static PortsList providedPorts()
     {
         return {
-            InputPort<double>("stop_dist", 1.0, "The distance at which the robot will stop moving towards the ball"),
-            InputPort<double>("stop_angle", 0.1, "The angle at which the robot will stop turning towards the ball"),
-            InputPort<double>("vy_limit", 0.2, "Limit the velocity in the Y direction to prevent instability while walking"),
-            InputPort<double>("vx_limit", 0.6, "Limit the velocity in the X direction to prevent instability while walking"),
+            InputPort<double>("stop_dist", 1.0, "在距离球多远的距离, 就不再走向球了"),
+            InputPort<double>("stop_angle", 0.1, "球的角度在多少时, 就不再转向球了"),
+            InputPort<double>("vy_limit", 0.2, "限制 Y 方向速度, 以防止走路不稳定. 要起作用需要小于机器本身的限速 0.4"),
+            InputPort<double>("vx_limit", 0.6, "限制 X 方向速度, 以防止走路不稳定. 要起作用需要小于机器本身的限速 1.2"),
         };
     }
 
@@ -464,7 +660,29 @@ private:
     Brain *brain;
 };
 
-// ------------------------------- FOR DEBUG -------------------------------
+
+class CalibrateOdom : public SyncActionNode
+{
+public:
+    CalibrateOdom(const string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain) {}
+
+    static PortsList providedPorts()
+    {
+        return {
+            InputPort<double>("x", 0, "x"),
+            InputPort<double>("y", 0, "y"),
+            InputPort<double>("theta", 0, "theta"),
+        };
+    }
+
+    NodeStatus tick() override;
+
+private:
+    Brain *brain;
+};
+
+
+// 向 cout 打印文字
 class PrintMsg : public SyncActionNode
 {
 public:
@@ -478,6 +696,49 @@ public:
     static PortsList providedPorts()
     {
         return {InputPort<std::string>("msg")};
+    }
+
+private:
+    Brain *brain;
+};
+
+// 播放一些预定义的声音
+class PlaySound : public SyncActionNode
+{
+public:
+    PlaySound(const std::string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain)
+    {
+    }
+
+    NodeStatus tick() override;
+
+    static BT::PortsList providedPorts()
+    {
+        return {
+            InputPort<string>("sound", "cheerful", "播放声音的名称"),
+            InputPort<bool>("allow_repeat", false, "是否允许重复播放同一个声音"),
+        };
+    }
+
+private:
+    Brain *brain;
+};
+
+// 使用本地 tts (espeak) 朗读文本
+class Speak : public SyncActionNode
+{
+public:
+    Speak(const std::string &name, const NodeConfig &config, Brain *_brain) : SyncActionNode(name, config), brain(_brain)
+    {
+    }
+
+    NodeStatus tick() override;
+
+    static BT::PortsList providedPorts()
+    {
+        return {
+            InputPort<string>("text", "", "朗读的文本内容, 必须是英文"),
+        };
     }
 
 private:

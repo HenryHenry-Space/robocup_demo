@@ -1,4 +1,5 @@
 #!/bin/bash
+echo "[START BRAIN]"
 
 cd `dirname $0`
 cd ..

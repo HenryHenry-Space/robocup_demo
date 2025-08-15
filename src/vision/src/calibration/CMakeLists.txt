@@ -1,12 +1,11 @@
 message(STATUS "Builing Calibration")
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-  list(APPEND CMAKE_PREFIX_PATH ${PROJECT_SOURCE_DIR}/thirdparty/ceres/aarch64)
+  list(APPEND CMAKE_PREFIX_PATH ${PROJECT_SOURCE_DIR}/thirdparty)
   find_package(Ceres REQUIRED)
-  install(DIRECTORY ${PROJECT_SOURCE_DIR}/thirdparty/ceres/aarch64/lib
+  install(DIRECTORY ${PROJECT_SOURCE_DIR}/thirdparty/lib/
     DESTINATION lib
     FILES_MATCHING PATTERN "*.so*")
 else()
-  list(APPEND CMAKE_PREFIX_PATH ${PROJECT_SOURCE_DIR}/thirdparty/ceres/x64)
   find_package(Ceres REQUIRED)
 endif()
 
@@ -24,6 +23,7 @@ add_executable(calibration_node calibration_node.cpp
 
 target_link_libraries(calibration_node booster_vision_base
                                        booster_vision_pose_estimator
+                                       yolov8_model
                                        booster_vision_calibration
                                        ${typesupport_target}
                                      )

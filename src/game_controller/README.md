@@ -1,16 +1,15 @@
 # robocup game_controller
-## Function Description
-It mainly receives the UDP packets sent by the Robocup referee machine GameController to the local area network and converts them into Ros2 Topic messages for the robocup brain to use.
+## 功能说明
+接收 Robocup 裁判机 GameController 发到局域网的 UDP 包，转成 Ros2 Topic 消息，供 robocup brain 使用
 
-## Startup Method
-
+## 启动方式
 ```
-# Enter the robocup_demo directory
+# 进入 robocup_demo 目录
 > cd robocup_demo
-# Compile
->./script/build.sh
-# Run
->./start_game_controller.sh
-# View topic information
+# 编译
+> ./script/build.sh
+# 运行
+> ./start_game_controller.sh
+# 查看 topic 信息
 > ros2 topic info -v /robocup/game_controller
 ```

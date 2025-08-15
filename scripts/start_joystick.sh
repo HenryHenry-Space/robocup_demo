@@ -1,4 +1,5 @@
 #!/bin/bash
+echo "[START JOYSTICK]"
 
 cd `dirname $0`
 cd ..

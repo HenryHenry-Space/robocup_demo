@@ -1,112 +1,75 @@
 #include <gtest/gtest.h>
 #include <gtest/gtest.h>
-#include "booster_vision/model//detector.h"
-#include "booster_vision/model//segmentor.h"
+#include "booster_vision/model/detector.h"
 #include <opencv2/opencv.hpp>
 
 using booster_vision::YoloV8Detector;
-using booster_vision::YoloV8Segmentor;
 using booster_vision::DetectionRes;
-using booster_vision::SegmentationRes;
 
+
+std::string g_cfg_path = "";
+std::string g_img_path = "";
 class YoloV8DetectorTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Initialize the detector with a configuration node
-        YAML::Node config = YAML::LoadFile("config.yaml");
+        YAML::Node config = YAML::LoadFile(g_cfg_path);
         detector = YoloV8Detector::CreateYoloV8Detector(config["detection_model"]);
-        segmentor = YoloV8Segmentor::CreateYoloV8Segmentor(config["segmentation_model"]);
     }
 
     std::shared_ptr<YoloV8Detector> detector;
-    std::shared_ptr<YoloV8Segmentor> segmentor;
 };
 
-TEST_F(YoloV8DetectorTest, SegmentObjectsInRealImage) {
-    // Set confidence threshold
-    std::cout << "current threshold: " << detector->getConfidenceThreshold() << std::endl;
+TEST_F(YoloV8DetectorTest, SetAndGetParams) {
+    float original_confidence_threshold = detector->getConfidenceThreshold();
+    float original_nms_threshold = detector->getNMSThreshold();
 
-    // Load a real image
-    cv::Mat realImage = cv::imread("real_image.jpg");
+    float confidence_threshold = 0.5f;
+    detector->setConfidenceThreshold(confidence_threshold);
+    float retrieved_threshold = detector->getConfidenceThreshold();
+    ASSERT_EQ(retrieved_threshold, confidence_threshold);
 
-    // Perform object detection
-    std::vector<SegmentationRes> objects;
-    for (int i = 0; i < 10; i++)
-        objects = segmentor->Inference(realImage);
+    float nms_threshold = 0.2;
+    detector->setNMSThreshold(nms_threshold);
+    float retrieved_nms_threshold = detector->getNMSThreshold();
+    ASSERT_EQ(retrieved_nms_threshold, nms_threshold);
 
-    cv::Mat res_image = booster_vision::YoloV8Segmentor::DrawSegmentation(realImage, objects);
-    cv::imwrite("segment_image_display.jpg", res_image);
+    // Reset the original values
+    detector->setConfidenceThreshold(original_confidence_threshold);
+    detector->setNMSThreshold(original_nms_threshold);
 }
 
-// Test case for setting and getting confidence threshold
-TEST_F(YoloV8DetectorTest, SetAndGetConfidenceThreshold) {
-    // Set confidence threshold
-    float threshold = 0.5f;
-    detector->setConfidenceThreshold(threshold);
+TEST_F(YoloV8DetectorTest, DetectObjects) {
+    float orginal_threshold = detector->getConfidenceThreshold();
+    // read image
+    cv::Mat img = cv::imread(g_img_path);
 
-    // Get confidence threshold
-    float retrievedThreshold = detector->getConfidenceThreshold();
+    std::vector<DetectionRes> objects = detector->Inference(img);
+    int num_objs = static_cast<int>(objects.size());
+    ASSERT_GT(num_objs, 0);
 
-    // Assert that the retrieved threshold matches the set threshold
-    ASSERT_EQ(retrievedThreshold, threshold);
+    auto display_img = booster_vision::YoloV8Detector::DrawDetection(img, objects);
+    cv::imshow("Detected Objects", display_img);
+    cv::waitKey(0);
+
+    detector->setConfidenceThreshold(0.99f);
+    objects = detector->Inference(img);
+    int num_objs_new = static_cast<int>(objects.size());
+    ASSERT_GE(num_objs, num_objs_new);
+
+    detector->setConfidenceThreshold(orginal_threshold);
 }
 
-// Test case for detecting objects with a specific confidence threshold
-TEST_F(YoloV8DetectorTest, DetectObjectsWithConfidenceThreshold) {
-    // Set confidence threshold
-    float threshold = 0.1f;
-    detector->setConfidenceThreshold(threshold);
-
-    // Test input image
-    cv::Mat image = cv::imread("test_image.jpg");
-
-    // Perform object detection
-    std::vector<DetectionRes> objects = detector->Inference(image);
-
-    // Assert that at least one object is detected
-    ASSERT_GT(objects.size(), 0);
-}
-
-// Test case for detecting objects in an empty image
-TEST_F(YoloV8DetectorTest, DetectObjectsInEmptyImage) {
-    // Set confidence threshold
-    float threshold = 0.5f;
-    detector->setConfidenceThreshold(threshold);
-
-    // Create an empty image
-    cv::Mat emptyImage = cv::Mat::zeros(cv::Size(640, 480), CV_8UC3);
-
-    // Perform object detection
-    std::vector<DetectionRes> objects = detector->Inference(emptyImage);
-
-    // Assert that no objects are detected
+TEST_F(YoloV8DetectorTest, DetectObjectsOnEmptyImage) {
+    cv::Mat img = cv::Mat::zeros(cv::Size(640, 640), CV_8UC3);
+    std::vector<DetectionRes> objects = detector->Inference(img);
     ASSERT_EQ(objects.size(), 0);
-}
-
-// Test case for detecting objects in a real image
-TEST_F(YoloV8DetectorTest, DetectObjectsInRealImage) {
-    // Set confidence threshold
-    std::cout << "current threshold: " << detector->getConfidenceThreshold() << std::endl;
-
-    // Load a real image
-    cv::Mat realImage = cv::imread("real_image.jpg");
-
-    // Perform object detection
-    std::vector<DetectionRes> objects = detector->Inference(realImage);
-
-    for (auto &det_res : objects) {
-        std::cout << "class_id: " << det_res.class_id << ", confidence: " << det_res.confidence << std::endl;
-        std::cout << "bbox: " << det_res.bbox << std::endl;
-        cv::rectangle(realImage, det_res.bbox, cv::Scalar(255, 255, 255), 2);
-    }
-
-    cv::imwrite("real_image_output.jpg", realImage);
-
-    // Assert that objects are detected
-    ASSERT_GT(objects.size(), 0);
 }
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
+
+    g_cfg_path = argv[1];
+    g_img_path = argv[2];
     return RUN_ALL_TESTS();
 }
